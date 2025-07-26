@@ -58,12 +58,44 @@ app.post('/leave-all-meetings', async (req, res) => {
 });
 
 app.get('/bot-status', (req, res) => {
+  const status = getBotStatus();
+  res.json(status);
+});
+
+// Debug endpoint to test single bot join
+app.post('/debug-join', async (req, res) => {
   try {
-    const status = getBotStatus();
-    res.json(status);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    const { meetingId, passcode, botName } = req.body;
+    
+    if (!meetingId || !botName) {
+      return res.status(400).json({ error: 'Meeting ID and bot name required' });
+    }
+    
+    console.log(`Debug: Testing single bot join for ${botName}`);
+    const result = await joinZoomMeeting(meetingId, passcode || '', botName);
+    
+    res.json({
+      success: true,
+      result: result,
+      message: 'Debug join completed'
+    });
+  } catch (error) {
+    console.error('Debug join error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  });
 });
 
 const PORT = process.env.PORT || 3000;

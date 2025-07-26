@@ -105,7 +105,11 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     console.log(`Page loaded for ${userName}, waiting for form...`);
     
     // Wait for page to load
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 8000));
+    
+    // Debug: Take screenshot to see what's on the page
+    await page.screenshot({ path: `/tmp/${userName}_debug.png` });
+    console.log(`Screenshot saved for ${userName}`);
     
     // After page load, always mute audio and stop video before joining
     try {
@@ -133,65 +137,155 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     // Fill in the meeting details form
     console.log(`Looking for meeting form for ${userName}...`);
     
-    // Look for name input field
-    const nameInput = await page.$('input[name="inputname"]') || 
-                     await page.$('#inputname') || 
-                     await page.$('input[placeholder*="name"]') ||
-                     await page.$('input[placeholder*="Name"]') ||
-                     await page.$('input[aria-label*="name"]') ||
-                     await page.$('input[aria-label*="Name"]');
+    // Wait longer for form to appear
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Debug: Check what elements are available
+    const availableElements = await page.evaluate(() => {
+      const inputs = Array.from(document.querySelectorAll('input')).map(input => ({
+        type: input.type,
+        name: input.name,
+        id: input.id,
+        placeholder: input.placeholder,
+        className: input.className
+      }));
+      const buttons = Array.from(document.querySelectorAll('button')).map(btn => ({
+        text: btn.textContent?.trim(),
+        className: btn.className,
+        id: btn.id
+      }));
+      return { inputs, buttons };
+    });
+    
+    console.log(`Available elements for ${userName}:`, availableElements);
+    
+    // Look for name input field with multiple strategies
+    let nameInput = null;
+    const nameSelectors = [
+      'input[name="inputname"]',
+      '#inputname',
+      'input[placeholder*="name"]',
+      'input[placeholder*="Name"]',
+      'input[aria-label*="name"]',
+      'input[aria-label*="Name"]',
+      'input[type="text"]',
+      'input'
+    ];
+    
+    for (const selector of nameSelectors) {
+      try {
+        nameInput = await page.$(selector);
+        if (nameInput) {
+          console.log(`Found name input for ${userName} using selector: ${selector}`);
+          break;
+        }
+      } catch (err) {
+        continue;
+      }
+    }
     
     if (nameInput) {
-      console.log(`Found name input for ${userName}, entering name...`);
+      console.log(`Entering name for ${userName}...`);
       await nameInput.click();
       await nameInput.type(userName, { delay: 100 });
+      console.log(`Name entered for ${userName}`);
     } else {
-      console.log(`Name input not found for ${userName}, trying alternative selectors...`);
-      // Try alternative selectors
-      const nameInputAlt = await page.$('input[type="text"]') || await page.$('input');
-      if (nameInputAlt) {
-        await nameInputAlt.click();
-        await nameInputAlt.type(userName, { delay: 100 });
-        console.log(`Entered name using alternative selector for ${userName}`);
+      console.log(`No name input found for ${userName}, trying page.evaluate...`);
+      
+      // Try using page.evaluate to find and fill input
+      const nameEntered = await page.evaluate((userName) => {
+        const inputs = Array.from(document.querySelectorAll('input'));
+        const nameInput = inputs.find(input => 
+          input.type === 'text' || 
+          input.placeholder?.toLowerCase().includes('name') ||
+          input.name?.toLowerCase().includes('name')
+        );
+        
+        if (nameInput) {
+          nameInput.value = userName;
+          nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+          return true;
+        }
+        return false;
+      }, userName);
+      
+      if (nameEntered) {
+        console.log(`Name entered via page.evaluate for ${userName}`);
+      } else {
+        console.log(`Failed to enter name for ${userName}`);
       }
     }
     
     // Look for password input if needed
     if (passWord) {
-      const passwordInput = await page.$('input[name="inputpasscode"]') || 
-                           await page.$('#inputpasscode') || 
-                           await page.$('input[placeholder*="passcode"]') ||
-                           await page.$('input[placeholder*="Passcode"]') ||
-                           await page.$('input[type="password"]');
+      const passwordSelectors = [
+        'input[name="inputpasscode"]',
+        '#inputpasscode',
+        'input[placeholder*="passcode"]',
+        'input[placeholder*="Passcode"]',
+        'input[type="password"]'
+      ];
+      
+      let passwordInput = null;
+      for (const selector of passwordSelectors) {
+        try {
+          passwordInput = await page.$(selector);
+          if (passwordInput) {
+            console.log(`Found password input for ${userName} using selector: ${selector}`);
+            break;
+          }
+        } catch (err) {
+          continue;
+        }
+      }
       
       if (passwordInput) {
-        console.log(`Found password input for ${userName}, entering password...`);
+        console.log(`Entering password for ${userName}...`);
         await passwordInput.click();
         await passwordInput.type(passWord, { delay: 100 });
+        console.log(`Password entered for ${userName}`);
       }
     }
     
     // Wait a bit for form to be ready
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
-    // Look for join button
+    // Look for join button with multiple strategies
     console.log(`Looking for join button for ${userName}...`);
     
-    const joinButton = await page.$('.preview-join-button') || 
-                      await page.$('button[class*="preview-join-button"]') ||
-                      await page.$('button:contains("Join")') ||
-                      await page.$('button[aria-label*="Join"]') ||
-                      await page.$('button[type="submit"]');
+    const joinSelectors = [
+      '.preview-join-button',
+      'button[class*="preview-join-button"]',
+      'button[aria-label*="Join"]',
+      'button[type="submit"]',
+      'button:contains("Join")'
+    ];
+    
+    let joinButton = null;
+    for (const selector of joinSelectors) {
+      try {
+        joinButton = await page.$(selector);
+        if (joinButton) {
+          console.log(`Found join button for ${userName} using selector: ${selector}`);
+          break;
+        }
+      } catch (err) {
+        continue;
+      }
+    }
     
     if (joinButton) {
-      console.log(`Found join button for ${userName}, clicking...`);
+      console.log(`Clicking join button for ${userName}...`);
       await joinButton.click();
       console.log(`Join button clicked successfully for ${userName}`);
     } else {
-      // Try to find any button with "Join" text
+      // Try to find any button with "Join" text using page.evaluate
       const joinButtonFound = await page.evaluate(() => {
         const buttons = Array.from(document.querySelectorAll('button'));
-        const joinBtn = buttons.find(btn => btn.textContent?.toLowerCase().includes('join'));
+        const joinBtn = buttons.find(btn => 
+          btn.textContent?.toLowerCase().includes('join') ||
+          btn.innerText?.toLowerCase().includes('join')
+        );
         if (joinBtn) {
           joinBtn.click();
           return true;
@@ -206,6 +300,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         const allButtons = await page.evaluate(() => {
           return Array.from(document.querySelectorAll('button')).map(btn => ({
             text: btn.textContent?.trim(),
+            innerText: btn.innerText?.trim(),
             className: btn.className,
             id: btn.id
           }));
