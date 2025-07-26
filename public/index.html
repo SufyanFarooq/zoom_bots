@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Zoom Bot Manager</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .danger {
+            background-color: #dc3545;
+        }
+        .danger:hover {
+            background-color: #c82333;
+        }
+        .success {
+            background-color: #28a745;
+        }
+        .success:hover {
+            background-color: #218838;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Zoom Bot Manager</h1>
+        
+        <form id="join-form">
+            <label>Meeting ID: <input type="text" id="meetingId" required></label><br><br>
+            <label>Passcode: <input type="text" id="passcode" required></label><br><br>
+            <label>Number of Bots: <input type="number" id="botCount" value="5" min="1" max="10"></label><br><br>
+            <button id="joinBtn" type="submit">🚀 Join as Bots</button>
+        </form>
+
+        <div class="controls">
+            <button id="statusBtn" class="success">📊 Check Bot Status</button>
+            <button id="leaveBtn" class="danger">🚪 Leave All Meetings & Close Bots</button>
+        </div>
+
+        <div id="status" class="status" style="display: none;">
+            <h3>Bot Status:</h3>
+            <div id="statusContent"></div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('join-form').onsubmit = async function(e) {
+            e.preventDefault();
+            const meetingNumber = document.getElementById('meetingId').value;
+            const passWord = document.getElementById('passcode').value;
+            const botCount = parseInt(document.getElementById('botCount').value, 10) || 5;
+            
+            function getRandomName() {
+                const names = [
+                    'Ali', 'Sara', 'Omar', 'Ayesha', 'Zain', 'Fatima', 'Usman', 'Hira', 'Bilal', 'Mina',
+                    'Hamza', 'Noor', 'Danish', 'Iqra', 'Saad', 'Sana', 'Raza', 'Mariam', 'Tariq', 'Laila'
+                ];
+                return names[Math.floor(Math.random() * names.length)] + '_' + Math.floor(Math.random() * 10000);
+            }
+
+            console.log(`Starting ${botCount} bots to join meeting: ${meetingNumber}`);
+
+            for (let i = 0; i < botCount; i++) {
+                const userName = getRandomName();
+                console.log(`Joining meeting as: ${userName}`);
+                
+                // Use Puppeteer to join directly
+                try {
+                    const joinRes = await fetch('/join-meeting', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            meetingNumber: meetingNumber,
+                            passWord: passWord,
+                            userName: userName
+                        })
+                    });
+                    const joinResult = await joinRes.json();
+                    console.log('Join result for', userName, ':', joinResult);
+                } catch (err) {
+                    console.error('Join error for', userName, ':', err);
+                }
+                
+                // Add delay between bot joins to avoid overwhelming the system
+                if (i < botCount - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+        };
+
+        // Check bot status
+        document.getElementById('statusBtn').onclick = async function() {
+            try {
+                const response = await fetch('/bot-status');
+                const status = await response.json();
+                
+                const statusDiv = document.getElementById('status');
+                const contentDiv = document.getElementById('statusContent');
+                
+                contentDiv.innerHTML = `
+                    <p><strong>Active Bots:</strong> ${status.activeBots}</p>
+                    <p><strong>Bot Names:</strong> ${status.botNames.join(', ') || 'None'}</p>
+                `;
+                
+                statusDiv.style.display = 'block';
+            } catch (err) {
+                console.error('Error checking status:', err);
+            }
+        };
+
+        // Leave all meetings and close all bots
+        document.getElementById('leaveBtn').onclick = async function() {
+            if (confirm('Are you sure you want to leave all meetings and close all bots?')) {
+                // Disable button during operation
+                const leaveBtn = document.getElementById('leaveBtn');
+                const originalText = leaveBtn.innerHTML;
+                leaveBtn.innerHTML = '⏳ Leaving & Closing...';
+                leaveBtn.disabled = true;
+                
+                try {
+                    // First leave all meetings
+                    const leaveResponse = await fetch('/leave-all-meetings', { method: 'POST' });
+                    const leaveResult = await leaveResponse.json();
+                    console.log('Leave result:', leaveResult);
+                    
+                    // Wait a bit for meetings to leave
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    
+                    // Then close all browsers
+                    const closeResponse = await fetch('/close-all-bots', { method: 'POST' });
+                    const closeResult = await closeResponse.json();
+                    console.log('Close result:', closeResult);
+                    
+                    alert(`Left meetings: ${leaveResult.message}\nClosed bots: ${closeResult.message}`);
+                    
+                    // Automatically refresh status after closing
+                    setTimeout(async () => {
+                        try {
+                            const statusResponse = await fetch('/bot-status');
+                            const status = await statusResponse.json();
+                            
+                            const statusDiv = document.getElementById('status');
+                            const contentDiv = document.getElementById('statusContent');
+                            
+                            contentDiv.innerHTML = `
+                                <p><strong>Active Bots:</strong> ${status.activeBots}</p>
+                                <p><strong>Bot Names:</strong> ${status.botNames.join(', ') || 'None'}</p>
+                            `;
+                            
+                            statusDiv.style.display = 'block';
+                        } catch (err) {
+                            console.error('Error refreshing status:', err);
+                        }
+                    }, 1000);
+                    
+                } catch (err) {
+                    console.error('Error leaving meetings and closing bots:', err);
+                    alert('Error leaving meetings and closing bots');
+                } finally {
+                    // Re-enable button
+                    leaveBtn.innerHTML = originalText;
+                    leaveBtn.disabled = false;
+                }
+            }
+        };
+    </script>
+</body>
+</html>
