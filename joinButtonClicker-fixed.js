@@ -119,18 +119,64 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     // Enter passcode
     console.log(`Entering passcode for ${userName}...`);
     try {
-      await page.waitForSelector('#input-for-pwd', { timeout: 10000 });
-      await page.type('#input-for-pwd', passWord);
-      console.log(`Passcode entered for ${userName}`);
-    } catch (error) {
-      console.log(`Passcode input not found for ${userName}, trying fallback...`);
-      try {
-        await page.type('input[type="password"]', passWord);
-        console.log(`Passcode entered via fallback for ${userName}`);
-      } catch (error2) {
-        console.log(`Error for ${userName}: Passcode input not found`);
-        throw new Error(`Passcode input not found for ${userName}`);
+      // Try multiple selectors for passcode input
+      const passcodeSelectors = [
+        '#input-for-pwd',
+        'input[type="password"]',
+        'input[placeholder*="passcode"]',
+        'input[placeholder*="password"]',
+        'input[name*="passcode"]',
+        'input[name*="password"]',
+        'input[aria-label*="passcode"]',
+        'input[aria-label*="password"]'
+      ];
+      
+      let passcodeInput = null;
+      for (const selector of passcodeSelectors) {
+        try {
+          passcodeInput = await page.waitForSelector(selector, { timeout: 2000 });
+          if (passcodeInput) {
+            console.log(`Found passcode input for ${userName} using selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // Continue to next selector
+        }
       }
+      
+      if (passcodeInput) {
+        await passcodeInput.type(passWord);
+        console.log(`Passcode entered for ${userName}`);
+      } else {
+        // Try page.evaluate as fallback
+        const entered = await page.evaluate((pwd) => {
+          const inputs = Array.from(document.querySelectorAll('input'));
+          const passcodeInput = inputs.find(input => 
+            input.type === 'password' ||
+            input.placeholder?.toLowerCase().includes('passcode') ||
+            input.placeholder?.toLowerCase().includes('password') ||
+            input.name?.toLowerCase().includes('passcode') ||
+            input.name?.toLowerCase().includes('password') ||
+            input.id?.toLowerCase().includes('pwd') ||
+            input.id?.toLowerCase().includes('pass')
+          );
+          if (passcodeInput) {
+            passcodeInput.value = pwd;
+            passcodeInput.dispatchEvent(new Event('input', { bubbles: true }));
+            return true;
+          }
+          return false;
+        }, passWord);
+        
+        if (entered) {
+          console.log(`Passcode entered via page.evaluate for ${userName}`);
+        } else {
+          throw new Error('No passcode input found');
+        }
+      }
+    } catch (error) {
+      console.log(`Error for ${userName}: Passcode input not found - ${error.message}`);
+      throw new Error(`Passcode input not found for ${userName}`);
     }
     
     // Wait a moment
