@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { generateSignature } from './signature.js';
 import { joinZoomMeeting, closeAllBots, leaveAllMeetings, getBotStatus } from './joinButtonClicker.js';
 import dotenv from 'dotenv';
+import fs from 'fs';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -151,6 +152,77 @@ app.get('/detailed-bot-status', async (req, res) => {
     }
     
     res.json(detailedStatus);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List all screenshots
+app.get('/screenshots', (req, res) => {
+  try {
+    const screenshotsDir = '/tmp';
+    const files = fs.readdirSync(screenshotsDir);
+    const screenshotFiles = files.filter(file => file.endsWith('.png'));
+    
+    const screenshots = screenshotFiles.map(file => {
+      const filePath = path.join(screenshotsDir, file);
+      const stats = fs.statSync(filePath);
+      return {
+        name: file,
+        size: stats.size,
+        created: stats.birthtime,
+        path: `/screenshot/${file}`
+      };
+    });
+    
+    res.json({
+      success: true,
+      screenshots: screenshots,
+      total: screenshots.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Download specific screenshot
+app.get('/screenshot/:filename', (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filePath = path.join('/tmp', filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Screenshot not found' });
+    }
+    
+    res.sendFile(filePath);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete all screenshots
+app.delete('/screenshots', (req, res) => {
+  try {
+    const screenshotsDir = '/tmp';
+    const files = fs.readdirSync(screenshotsDir);
+    const screenshotFiles = files.filter(file => file.endsWith('.png'));
+    
+    let deletedCount = 0;
+    screenshotFiles.forEach(file => {
+      try {
+        fs.unlinkSync(path.join(screenshotsDir, file));
+        deletedCount++;
+      } catch (err) {
+        console.log(`Failed to delete ${file}:`, err.message);
+      }
+    });
+    
+    res.json({
+      success: true,
+      message: `Deleted ${deletedCount} screenshots`,
+      deletedCount: deletedCount
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
