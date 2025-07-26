@@ -15,11 +15,10 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     delete process.env.PUPPETEER_EXECUTABLE_PATH;
     console.log(`Cleared PUPPETEER_EXECUTABLE_PATH environment variable`);
     
-    // Simple launch options - use correct Chromium path
+    // Simple launch options - use correct Chromium path for production
     const launchOptions = {
       headless: false, // Always show browser for debugging
       protocolTimeout: 120000, // 2 minutes timeout
-      executablePath: '/Users/mac/.cache/puppeteer/chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -57,11 +56,21 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       ]
     };
     
+    // Set executablePath based on environment
+    if (process.env.NODE_ENV === 'production') {
+      launchOptions.executablePath = '/usr/bin/chromium-browser';
+      console.log('Using production Chromium path');
+    } else {
+      launchOptions.executablePath = '/Users/mac/.cache/puppeteer/chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
+      console.log('Using local Chromium path');
+    }
+    
     // NEVER set executablePath - use bundled Chromium
     console.log(`Launch options:`, { 
       headless: launchOptions.headless, 
       executablePath: launchOptions.executablePath,
-      argsCount: launchOptions.args.length
+      argsCount: launchOptions.args.length,
+      environment: process.env.NODE_ENV
     });
     
     browser = await puppeteer.launch(launchOptions);

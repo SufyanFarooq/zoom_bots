@@ -12,7 +12,9 @@ delete process.env.PUPPETEER_EXECUTABLE_PATH;
 process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'false';
 // Set correct Chromium path for local development
 process.env.PUPPETEER_EXECUTABLE_PATH = '/Users/mac/.cache/puppeteer/chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
-console.log('🚀 Server starting - Set Chromium path for local development');
+// Set NODE_ENV to production for Railway
+process.env.NODE_ENV = 'production';
+console.log('🚀 Server starting - Set Chromium path for production deployment');
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
