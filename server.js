@@ -27,15 +27,53 @@ app.get('/signature', (req, res) => {
 });
 
 app.post('/join-meeting', async (req, res) => {
-  const { meetingNumber, passWord, userName } = req.body;
-  if (!meetingNumber || !userName) {
-    return res.status(400).json({ error: 'meetingNumber and userName required' });
-  }
   try {
-    const result = await joinZoomMeeting(meetingNumber, passWord, userName);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    const { meetingId, passcode, botCount } = req.body;
+    
+    if (!meetingId || !botCount) {
+      return res.status(400).json({ error: 'meetingId and botCount required' });
+    }
+    
+    console.log(`Starting ${botCount} bots to join meeting: ${meetingId}`);
+    
+    const results = [];
+    const botNames = [];
+    
+    // Generate random bot names
+    for (let i = 0; i < botCount; i++) {
+      const firstName = ['Ali', 'Fatima', 'Ahmed', 'Ayesha', 'Usman', 'Mariam', 'Bilal', 'Zara', 'Danish', 'Noor', 'Saad', 'Hira', 'Tariq', 'Sana', 'Zain', 'Aisha', 'Hassan', 'Layla', 'Omar', 'Yasmin'];
+      const lastName = Math.floor(Math.random() * 9999) + 1000;
+      const botName = `${firstName[Math.floor(Math.random() * firstName.length)]}_${lastName}`;
+      botNames.push(botName);
+    }
+    
+    // Join bots in parallel
+    const joinPromises = botNames.map(botName => 
+      joinZoomMeeting(meetingId, passcode || '', botName)
+    );
+    
+    const joinResults = await Promise.allSettled(joinPromises);
+    
+    joinResults.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        results.push(result.value);
+      } else {
+        results.push({
+          success: false,
+          error: result.reason.message,
+          userName: botNames[index]
+        });
+      }
+    });
+    
+    res.json({ results });
+    
+  } catch (error) {
+    console.error('Join meeting error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
