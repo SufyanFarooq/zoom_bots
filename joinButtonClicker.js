@@ -77,7 +77,10 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         '--disable-prompt-on-repost',
         '--disable-domain-reliability',
         '--disable-features=AudioServiceOutOfProcess',
-        '--disable-features=VizDisplayCompositor'
+        '--disable-features=VizDisplayCompositor',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=site-per-process',
+        '--disable-site-isolation-trials'
       ]
     });
 
@@ -91,6 +94,21 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
     // Set user agent
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    // Pre-accept cookies by setting them before page load
+    await page.setCookie({
+      name: 'OptanonAlertBoxClosed',
+      value: new Date().toISOString(),
+      domain: '.zoom.us',
+      path: '/'
+    });
+    
+    await page.setCookie({
+      name: 'OptanonConsent',
+      value: 'isIABGlobal=false&datestamp=Thu+Dec+28+2023+12%3A00%3A00+GMT%2B0500+(Pakistan+Standard+Time)&version=202310.1.0&hosts=&consentId=123456789&interactionCount=1&landingPath=NotLandingPage&groups=C0001%3A1%2CC0002%3A1%2CC0003%3A1%2CC0004%3A1&AwaitingReconsent=false&geolocation=PK%3BKP&notices=GPC',
+      domain: '.zoom.us',
+      path: '/'
+    });
     
     // Handle permissions automatically
     const context = browser.defaultBrowserContext();
@@ -110,6 +128,51 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     // Debug: Take screenshot to see what's on the page
     await page.screenshot({ path: `/tmp/${userName}_debug.png` });
     console.log(`Screenshot saved for ${userName}`);
+    
+    // Handle cookie consent popup first
+    console.log(`Checking for cookie consent popup for ${userName}...`);
+    try {
+      // Wait for cookie popup to appear
+      await page.waitForSelector('#onetrust-accept-btn-handler', { timeout: 5000 });
+      
+      // Click "Accept Cookies" button
+      const acceptCookiesBtn = await page.$('#onetrust-accept-btn-handler');
+      if (acceptCookiesBtn) {
+        await acceptCookiesBtn.click();
+        console.log(`Accepted cookies for ${userName}`);
+        // Wait for popup to disappear
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    } catch (err) {
+      console.log(`No cookie popup found for ${userName} or already handled`);
+    }
+    
+    // Alternative: Try to find and click any cookie accept button
+    try {
+      const cookieAcceptSelectors = [
+        '#onetrust-accept-btn-handler',
+        'button[class*="accept"]',
+        'button:contains("Accept")',
+        'button:contains("Accept Cookies")',
+        '.save-preference-btn-handler'
+      ];
+      
+      for (const selector of cookieAcceptSelectors) {
+        try {
+          const cookieBtn = await page.$(selector);
+          if (cookieBtn) {
+            await cookieBtn.click();
+            console.log(`Clicked cookie button for ${userName} using selector: ${selector}`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            break;
+          }
+        } catch (err) {
+          continue;
+        }
+      }
+    } catch (err) {
+      console.log(`Cookie handling failed for ${userName}:`, err.message);
+    }
     
     // After page load, always mute audio and stop video before joining
     try {
@@ -186,9 +249,37 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
     if (nameInput) {
       console.log(`Entering name for ${userName}...`);
-      await nameInput.click();
-      await nameInput.type(userName, { delay: 100 });
-      console.log(`Name entered for ${userName}`);
+      try {
+        await nameInput.click();
+        await nameInput.type(userName, { delay: 100 });
+        console.log(`Name entered for ${userName}`);
+      } catch (err) {
+        console.log(`Direct click failed for ${userName}, trying page.evaluate...`);
+        // Fallback to page.evaluate
+        const nameEntered = await page.evaluate((userName) => {
+          const inputs = Array.from(document.querySelectorAll('input'));
+          const nameInput = inputs.find(input => 
+            input.type === 'text' || 
+            input.placeholder?.toLowerCase().includes('name') ||
+            input.name?.toLowerCase().includes('name')
+          );
+          
+          if (nameInput) {
+            nameInput.focus();
+            nameInput.value = userName;
+            nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+            nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+          }
+          return false;
+        }, userName);
+        
+        if (nameEntered) {
+          console.log(`Name entered via page.evaluate for ${userName}`);
+        } else {
+          console.log(`Failed to enter name for ${userName}`);
+        }
+      }
     } else {
       console.log(`No name input found for ${userName}, trying page.evaluate...`);
       
