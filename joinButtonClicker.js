@@ -107,33 +107,6 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         '--disable-prompt-on-repost',
         '--disable-domain-reliability',
         '--disable-features=AudioServiceOutOfProcess',
-        '--disable-features=VizDisplayCompositor',
-        '--single-process',
-        '--disable-software-rasterizer',
-        '--disable-dev-shm-usage',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
-        '--disable-features=TranslateUI',
-        '--disable-ipc-flooding-protection',
-        '--disable-extensions',
-        '--disable-plugins',
-        '--disable-images',
-        '--disable-javascript',
-        '--disable-default-apps',
-        '--disable-sync',
-        '--disable-translate',
-        '--hide-scrollbars',
-        '--mute-audio',
-        '--no-default-browser-check',
-        '--disable-component-extensions-with-background-pages',
-        '--disable-background-networking',
-        '--disable-background-timer-throttling',
-        '--disable-client-side-phishing-detection',
-        '--disable-hang-monitor',
-        '--disable-prompt-on-repost',
-        '--disable-domain-reliability',
-        '--disable-features=AudioServiceOutOfProcess',
         '--disable-features=VizDisplayCompositor'
       ]
     });
@@ -669,18 +642,79 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       }
     }
     
-    // Wait to see if join was successful
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
     // Check if we're still on the same page or if join was successful
     const currentUrl = page.url();
     console.log(`Current URL for ${userName}: ${currentUrl}`);
     
-    // Wait for meeting interface to load
+    // Check if URL indicates successful join
+    const isSuccessfulJoin = currentUrl.includes('/wc/') && 
+                            (currentUrl.includes('/join') || currentUrl.includes('/meeting')) &&
+                            !currentUrl.includes('/wc/join/') &&
+                            currentUrl.includes('_x_zm_rtaid=');
+    
+    if (isSuccessfulJoin) {
+      console.log(`Successfully joined meeting for ${userName} based on URL`);
+      
+      // Wait a bit more for meeting to fully load
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Take a final screenshot to confirm
+      try {
+        await page.screenshot({ path: `/tmp/${userName}_final.png` });
+        console.log(`Final screenshot saved for ${userName}`);
+      } catch (screenshotErr) {
+        console.log(`Final screenshot failed for ${userName}:`, screenshotErr.message);
+      }
+      
+      return {
+        success: true,
+        message: `${userName} successfully joined meeting`,
+        userName: userName,
+        url: currentUrl
+      };
+    }
+    
+    // If not successful by URL, try meeting interface detection
     try {
-      // Wait for meeting-specific elements
-      await page.waitForSelector('.meeting-client', { timeout: 30000 });
-      console.log(`Meeting interface loaded for ${userName}`);
+      // Wait for meeting-specific elements with multiple selectors
+      const meetingSelectors = [
+        '.meeting-client',
+        '.meeting-client-inner',
+        '.meeting-client__footer',
+        '.meeting-client__main',
+        '.meeting-client__header',
+        '.meeting-client__participants',
+        '.meeting-client__chat',
+        '.meeting-client__video',
+        '.meeting-client__audio',
+        '.meeting-client__controls',
+        '.meeting-client__toolbar',
+        '.meeting-client__sidebar',
+        '.meeting-client__content',
+        '.meeting-client__container',
+        '.meeting-client__wrapper',
+        '.meeting-client__body',
+        '.meeting-client__app',
+        '.meeting-client__root',
+        '.meeting-client__main-content',
+        '.meeting-client__main-container'
+      ];
+      
+      let meetingElementFound = false;
+      for (const selector of meetingSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 5000 });
+          console.log(`Meeting element found for ${userName}: ${selector}`);
+          meetingElementFound = true;
+          break;
+        } catch (err) {
+          continue;
+        }
+      }
+      
+      if (!meetingElementFound) {
+        console.log(`No meeting elements found for ${userName}, checking URL...`);
+      }
       
       // Wait a bit more for full meeting load
       await new Promise(resolve => setTimeout(resolve, 10000));
@@ -697,26 +731,64 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
           '.meeting-client__participants',
           '.meeting-client__chat',
           '.meeting-client__video',
-          '.meeting-client__audio'
+          '.meeting-client__audio',
+          '.meeting-client__controls',
+          '.meeting-client__toolbar',
+          '.meeting-client__sidebar',
+          '.meeting-client__content',
+          '.meeting-client__container',
+          '.meeting-client__wrapper',
+          '.meeting-client__body',
+          '.meeting-client__app',
+          '.meeting-client__root',
+          '.meeting-client__main-content',
+          '.meeting-client__main-container'
         ];
         
         const foundElements = meetingElements.filter(selector => 
           document.querySelector(selector) !== null
         );
         
+        // Also check for any elements that might indicate we're in a meeting
+        const anyMeetingIndicators = [
+          '[class*="meeting"]',
+          '[class*="participant"]',
+          '[class*="video"]',
+          '[class*="audio"]',
+          '[class*="chat"]',
+          '[class*="control"]',
+          '[class*="toolbar"]',
+          '[class*="footer"]',
+          '[class*="header"]'
+        ];
+        
+        const foundIndicators = anyMeetingIndicators.filter(selector => 
+          document.querySelector(selector) !== null
+        );
+        
         return {
-          inMeeting: foundElements.length > 0,
+          inMeeting: foundElements.length > 0 || foundIndicators.length > 5,
           foundElements: foundElements,
+          foundIndicators: foundIndicators,
           pageTitle: document.title,
-          url: window.location.href
+          url: window.location.href,
+          bodyClasses: document.body.className,
+          allClasses: Array.from(document.querySelectorAll('*')).map(el => el.className).filter(Boolean).slice(0, 20)
         };
       });
       
       console.log(`Meeting status for ${userName}:`, meetingStatus);
       
-      if (!meetingStatus.inMeeting) {
+      // Check if URL indicates we're in a meeting
+      const isInMeetingByUrl = currentUrl.includes('/wc/') && 
+                              (currentUrl.includes('/join') || currentUrl.includes('/meeting')) &&
+                              !currentUrl.includes('/wc/join/');
+      
+      if (!meetingStatus.inMeeting && !isInMeetingByUrl) {
         throw new Error(`Not in meeting interface for ${userName}`);
       }
+      
+      console.log(`Successfully in meeting for ${userName}`);
       
     } catch (meetingErr) {
       console.log(`Meeting interface check failed for ${userName}:`, meetingErr.message);
