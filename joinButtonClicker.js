@@ -376,24 +376,136 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     if (joinButton) {
       console.log(`Clicking join button for ${userName}...`);
       try {
+        // Check if element is visible and scroll to it
+        await page.evaluate((selector) => {
+          const btn = document.querySelector(selector);
+          if (btn) {
+            btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Wait a bit for scroll
+            return new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }, buttonSelector || 'button[class*="submit"]');
+        
+        // Wait for element to be ready
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Try multiple click methods
         await joinButton.click();
         console.log(`Join button clicked successfully for ${userName}`);
       } catch (err) {
         console.log(`Direct click failed for ${userName}, trying page.evaluate...`);
-        // Fallback to page.evaluate
+        
+        // Get the selector that found the button
+        const buttonSelector = joinSelectors.find(selector => {
+          try {
+            return page.$(selector) === joinButton;
+          } catch {
+            return false;
+          }
+        });
+        
+        // Fallback to page.evaluate with multiple click methods
         const clicked = await page.evaluate((selector) => {
           const btn = document.querySelector(selector);
           if (btn) {
-            btn.click();
-            return true;
+            // Try multiple click methods
+            try {
+              btn.click();
+              return true;
+            } catch (e) {
+              try {
+                btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                return true;
+              } catch (e2) {
+                try {
+                  btn.dispatchEvent(new Event('click', { bubbles: true }));
+                  return true;
+                } catch (e3) {
+                  return false;
+                }
+              }
+            }
           }
           return false;
-        }, joinSelectors.find(s => joinButton && joinButton._selector === s) || joinSelectors[0]);
+        }, buttonSelector || 'button[class*="submit"]');
         
         if (clicked) {
           console.log(`Join button clicked via page.evaluate for ${userName}`);
         } else {
-          throw new Error(`Failed to click join button for ${userName}`);
+          // Try clicking by text content
+          const textClicked = await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const submitBtn = buttons.find(btn => 
+              btn.textContent?.toLowerCase().includes('submit') ||
+              btn.innerText?.toLowerCase().includes('submit') ||
+              btn.className?.toLowerCase().includes('submit')
+            );
+            
+            if (submitBtn) {
+              try {
+                submitBtn.click();
+                return true;
+              } catch (e) {
+                try {
+                  submitBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                  return true;
+                } catch (e2) {
+                  return false;
+                }
+              }
+            }
+            return false;
+          });
+          
+          if (textClicked) {
+            console.log(`Submit button clicked via text search for ${userName}`);
+          } else {
+            // Try keyboard navigation (Tab + Enter)
+            const keyboardClicked = await page.evaluate(() => {
+              const buttons = Array.from(document.querySelectorAll('button'));
+              const submitBtn = buttons.find(btn => 
+                btn.textContent?.toLowerCase().includes('submit') ||
+                btn.innerText?.toLowerCase().includes('submit') ||
+                btn.className?.toLowerCase().includes('submit')
+              );
+              
+              if (submitBtn) {
+                try {
+                  submitBtn.focus();
+                  submitBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+                  submitBtn.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+                  return true;
+                } catch (e) {
+                  return false;
+                }
+              }
+              return false;
+            });
+            
+            if (keyboardClicked) {
+              console.log(`Submit button activated via keyboard for ${userName}`);
+            } else {
+              // Final fallback: Submit the form directly
+              const formSubmitted = await page.evaluate(() => {
+                const forms = Array.from(document.querySelectorAll('form'));
+                if (forms.length > 0) {
+                  try {
+                    forms[0].submit();
+                    return true;
+                  } catch (e) {
+                    return false;
+                  }
+                }
+                return false;
+              });
+              
+              if (formSubmitted) {
+                console.log(`Form submitted directly for ${userName}`);
+              } else {
+                throw new Error(`Failed to click join button for ${userName}`);
+              }
+            }
+          }
         }
       }
     } else {
