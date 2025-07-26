@@ -141,6 +141,56 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         console.log(`Reloading page for ${userName} after cookie popup...`);
         await page.reload({ waitUntil: 'networkidle2' });
         await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Handle Terms of Service agreement if present
+        console.log(`Checking for Terms of Service for ${userName}...`);
+        try {
+          // Try to find and click "I Agree" button
+          const termsSelectors = [
+            'button:contains("I Agree")',
+            'button[class*="agree"]',
+            'button[id*="agree"]',
+            'button:contains("Agree")',
+            '#wc_agree1',
+            '#wc_agree2',
+            '.btn-primary'
+          ];
+          
+          for (const selector of termsSelectors) {
+            try {
+              await page.waitForSelector(selector, { timeout: 2000 });
+              await page.click(selector);
+              console.log(`Terms of Service agreed for ${userName} using selector: ${selector}`);
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              break;
+            } catch (e) {
+              // Continue to next selector
+            }
+          }
+          
+          // Alternative: Use page.evaluate to find and click agree button
+          const termsAgreed = await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const agreeButton = buttons.find(btn => 
+              btn.textContent.toLowerCase().includes('agree') ||
+              btn.textContent.toLowerCase().includes('i agree') ||
+              btn.className.toLowerCase().includes('agree') ||
+              btn.id.toLowerCase().includes('agree')
+            );
+            if (agreeButton) {
+              agreeButton.click();
+              return true;
+            }
+            return false;
+          });
+          
+          if (termsAgreed) {
+            console.log(`Terms of Service agreed via page.evaluate for ${userName}`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (error) {
+          console.log(`No Terms of Service found for ${userName} or already handled`);
+        }
       }
     } catch (error) {
       console.log(`No cookie popup found for ${userName} or already handled`);
