@@ -136,6 +136,11 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       if (cookieAccepted) {
         console.log(`Cookie popup accepted via page.evaluate for ${userName}`);
         await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Reload page after cookie popup to ensure form loads properly
+        console.log(`Reloading page for ${userName} after cookie popup...`);
+        await page.reload({ waitUntil: 'networkidle2' });
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
     } catch (error) {
       console.log(`No cookie popup found for ${userName} or already handled`);
