@@ -145,6 +145,25 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         // Handle Terms of Service agreement if present
         console.log(`Checking for Terms of Service for ${userName}...`);
         try {
+          // Take screenshot before Terms handling
+          try {
+            await page.screenshot({ path: `/tmp/${userName}_before_terms.png` });
+            console.log(`Before Terms screenshot saved for ${userName}`);
+          } catch (screenshotError) {
+            console.log(`Terms screenshot failed for ${userName}: ${screenshotError.message}`);
+          }
+          
+          // List all buttons for debugging
+          const allButtons = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('button')).map(btn => ({
+              text: btn.textContent.trim(),
+              id: btn.id,
+              className: btn.className,
+              visible: btn.offsetParent !== null
+            }));
+          });
+          console.log(`All buttons for ${userName}:`, allButtons);
+          
           // Try to find and click "I Agree" button
           const termsSelectors = [
             'button:contains("I Agree")',
@@ -153,43 +172,61 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
             'button:contains("Agree")',
             '#wc_agree1',
             '#wc_agree2',
-            '.btn-primary'
+            '.btn-primary',
+            'button.btn-primary',
+            'button[type="submit"]'
           ];
           
+          let termsAgreed = false;
           for (const selector of termsSelectors) {
             try {
               await page.waitForSelector(selector, { timeout: 2000 });
               await page.click(selector);
               console.log(`Terms of Service agreed for ${userName} using selector: ${selector}`);
+              termsAgreed = true;
               await new Promise(resolve => setTimeout(resolve, 2000));
               break;
             } catch (e) {
-              // Continue to next selector
+              console.log(`Terms selector failed for ${userName}: ${selector}`);
             }
           }
           
-          // Alternative: Use page.evaluate to find and click agree button
-          const termsAgreed = await page.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button'));
-            const agreeButton = buttons.find(btn => 
-              btn.textContent.toLowerCase().includes('agree') ||
-              btn.textContent.toLowerCase().includes('i agree') ||
-              btn.className.toLowerCase().includes('agree') ||
-              btn.id.toLowerCase().includes('agree')
-            );
-            if (agreeButton) {
-              agreeButton.click();
-              return true;
+          if (!termsAgreed) {
+            // Alternative: Use page.evaluate to find and click agree button
+            const agreed = await page.evaluate(() => {
+              const buttons = Array.from(document.querySelectorAll('button'));
+              const agreeButton = buttons.find(btn => 
+                btn.textContent.toLowerCase().includes('agree') ||
+                btn.textContent.toLowerCase().includes('i agree') ||
+                btn.className.toLowerCase().includes('agree') ||
+                btn.id.toLowerCase().includes('agree') ||
+                btn.className.toLowerCase().includes('btn-primary')
+              );
+              if (agreeButton) {
+                agreeButton.click();
+                return true;
+              }
+              return false;
+            });
+            
+            if (agreed) {
+              console.log(`Terms of Service agreed via page.evaluate for ${userName}`);
+              termsAgreed = true;
+              await new Promise(resolve => setTimeout(resolve, 2000));
             }
-            return false;
-          });
+          }
           
           if (termsAgreed) {
-            console.log(`Terms of Service agreed via page.evaluate for ${userName}`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Take screenshot after Terms handling
+            try {
+              await page.screenshot({ path: `/tmp/${userName}_after_terms.png` });
+              console.log(`After Terms screenshot saved for ${userName}`);
+            } catch (screenshotError) {
+              console.log(`After Terms screenshot failed for ${userName}: ${screenshotError.message}`);
+            }
           }
         } catch (error) {
-          console.log(`No Terms of Service found for ${userName} or already handled`);
+          console.log(`No Terms of Service found for ${userName} or already handled: ${error.message}`);
         }
       }
     } catch (error) {
