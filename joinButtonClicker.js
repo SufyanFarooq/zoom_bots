@@ -349,7 +349,6 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       'button[class*="preview-join-button"]',
       'button[aria-label*="Join"]',
       'button[type="submit"]',
-      'button:contains("Join")',
       '#joinBtn',
       'button[class*="join"]',
       'button[class*="submit"]',
@@ -369,22 +368,40 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
           break;
         }
       } catch (err) {
+        console.log(`Selector failed for ${userName}: ${selector} - ${err.message}`);
         continue;
       }
     }
     
     if (joinButton) {
       console.log(`Clicking join button for ${userName}...`);
+      
+      // Get the selector that found the button
+      let buttonSelector = null;
+      for (const selector of joinSelectors) {
+        try {
+          const foundButton = await page.$(selector);
+          if (foundButton && foundButton === joinButton) {
+            buttonSelector = selector;
+            break;
+          }
+        } catch (err) {
+          continue;
+        }
+      }
+      
       try {
         // Check if element is visible and scroll to it
-        await page.evaluate((selector) => {
-          const btn = document.querySelector(selector);
-          if (btn) {
-            btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Wait a bit for scroll
-            return new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }, buttonSelector || 'button[class*="submit"]');
+        if (buttonSelector) {
+          await page.evaluate((selector) => {
+            const btn = document.querySelector(selector);
+            if (btn) {
+              btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              // Wait a bit for scroll
+              return new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }, buttonSelector);
+        }
         
         // Wait for element to be ready
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -394,15 +411,6 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         console.log(`Join button clicked successfully for ${userName}`);
       } catch (err) {
         console.log(`Direct click failed for ${userName}, trying page.evaluate...`);
-        
-        // Get the selector that found the button
-        const buttonSelector = joinSelectors.find(selector => {
-          try {
-            return page.$(selector) === joinButton;
-          } catch {
-            return false;
-          }
-        });
         
         // Fallback to page.evaluate with multiple click methods
         const clicked = await page.evaluate((selector) => {
@@ -604,6 +612,26 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
   } catch (error) {
     console.error(`Error for ${userName}:`, error.message);
+    
+    // Log additional debugging info
+    try {
+      const pageInfo = await page.evaluate(() => {
+        return {
+          url: window.location.href,
+          title: document.title,
+          buttons: Array.from(document.querySelectorAll('button')).map(btn => ({
+            text: btn.textContent?.trim(),
+            className: btn.className,
+            id: btn.id,
+            type: btn.type
+          }))
+        };
+      });
+      console.log(`Page info for ${userName}:`, pageInfo);
+    } catch (debugErr) {
+      console.log(`Could not get debug info for ${userName}:`, debugErr.message);
+    }
+    
     return {
       success: false,
       error: error.message,
