@@ -142,8 +142,12 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     }
     
     // Take debug screenshot
-    await page.screenshot({ path: `/tmp/${userName}_debug_initial.png` });
-    console.log(`Debug screenshot saved for ${userName}`);
+    try {
+      await page.screenshot({ path: `/tmp/${userName}_debug_initial.png` });
+      console.log(`Debug screenshot saved for ${userName}`);
+    } catch (screenshotError) {
+      console.log(`Debug screenshot failed for ${userName}: ${screenshotError.message}`);
+    }
     
     // Handle camera/microphone permissions if present
     console.log(`Looking for meeting form for ${userName}...`);
@@ -172,8 +176,12 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Take screenshot before passcode attempt
-      await page.screenshot({ path: `/tmp/${userName}_before_passcode.png` });
-      console.log(`Before passcode screenshot saved for ${userName}`);
+      try {
+        await page.screenshot({ path: `/tmp/${userName}_before_passcode.png` });
+        console.log(`Before passcode screenshot saved for ${userName}`);
+      } catch (screenshotError) {
+        console.log(`Screenshot failed for ${userName}: ${screenshotError.message}`);
+      }
       
       // List all inputs for debugging
       const allInputs = await page.evaluate(() => {
@@ -316,15 +324,13 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
   } catch (error) {
     console.log(`Error for ${userName}: ${error.message}`);
-    
-    // Take error screenshot
     try {
       if (page) {
         await page.screenshot({ path: `/tmp/${userName}_error.png` });
         console.log(`Error screenshot saved for ${userName}`);
       }
     } catch (screenshotError) {
-      console.log(`Could not save error screenshot for ${userName}: ${screenshotError.message}`);
+      console.log(`Error screenshot failed for ${userName}: ${screenshotError.message}`);
     }
     
     // Close browser on error
