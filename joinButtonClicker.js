@@ -1,4 +1,5 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from 'chromium';
 
 // Global array to track all browser instances
 let activeBrowsers = [];
@@ -9,11 +10,14 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
   let browser;
   let page;
   try {
-    console.log(`Starting Puppeteer for ${userName} to join meeting: ${meetingNumber}`);
+    console.log(`Starting Chromium for ${userName} to join meeting: ${meetingNumber}`);
+    
+    // Get Chromium executable path
+    const chromiumPath = process.env.CHROMIUM_PATH || chromium.path;
     
     browser = await puppeteer.launch({
-      //   headless: process.env.NODE_ENV === 'production' ? true : false,
-      headless: true,
+      headless: true, // Always headless on server
+      executablePath: chromiumPath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -27,6 +31,33 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         '--allow-running-insecure-content',
         '--disable-web-security',
         '--disable-features=VizDisplayCompositor',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-images',
+        '--disable-javascript',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--hide-scrollbars',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-client-side-phishing-detection',
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+        '--disable-domain-reliability',
+        '--disable-features=AudioServiceOutOfProcess',
+        '--disable-features=VizDisplayCompositor',
+        '--single-process',
+        '--disable-software-rasterizer',
+        '--disable-dev-shm-usage',
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
         '--disable-renderer-backgrounding',
@@ -69,11 +100,11 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     const context = browser.defaultBrowserContext();
     await context.overridePermissions('https://zoom.us', ['camera', 'microphone']);
     
-    // Go directly to Zoom join URL
+    // Go directly to Zoom join URL with increased timeout
     const zoomJoinUrl = `https://zoom.us/wc/join/${meetingNumber}`;
     console.log(`Navigating to: ${zoomJoinUrl}`);
     
-    await page.goto(zoomJoinUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.goto(zoomJoinUrl, { waitUntil: 'networkidle2', timeout: 60000 });
     
     console.log(`Page loaded for ${userName}, waiting for form...`);
     
