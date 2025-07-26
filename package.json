@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
-    "postinstall": "npx puppeteer browsers install chromium"
+    "dev": "node server.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -16,7 +15,6 @@
     "dotenv": "^16.4.5",
     "@zoom/meetingsdk": "^4.0.0",
     "jsonwebtoken": "^9.0.2",
-    "puppeteer-core": "^24.15.0",
-    "chromium": "^119.0.0"
+    "puppeteer": "^24.15.0"
   }
 }

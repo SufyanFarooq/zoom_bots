@@ -1,5 +1,4 @@
-import puppeteer from 'puppeteer-core';
-import chromium from 'chromium';
+import puppeteer from 'puppeteer';
 
 // Global array to track all browser instances
 let activeBrowsers = [];
@@ -10,14 +9,11 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
   let browser;
   let page;
   try {
-    console.log(`Starting Chromium for ${userName} to join meeting: ${meetingNumber}`);
-    
-    // Get Chromium executable path
-    const chromiumPath = process.env.CHROMIUM_PATH || chromium.path;
+    console.log(`Starting Puppeteer for ${userName} to join meeting: ${meetingNumber}`);
     
     browser = await puppeteer.launch({
       headless: true, // Always headless on server
-      executablePath: chromiumPath,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',

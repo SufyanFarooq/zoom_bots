@@ -4,8 +4,5 @@ nixPkgs = ["chromium"]
 [phases.install]
 cmds = ["npm install"]
 
-[phases.build]
-cmds = ["npm run postinstall"]
-
 [start]
 cmd = "npm start" 
