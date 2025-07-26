@@ -2,17 +2,54 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { generateSignature } from './signature.js';
-import { joinZoomMeeting, closeAllBots, leaveAllMeetings, getBotStatus } from './joinButtonClicker.js';
+import { joinZoomMeeting, closeAllBots, leaveAllMeetings, getBotStatus } from './joinButtonClicker-fixed.js';
 import dotenv from 'dotenv';
 import fs from 'fs';
-dotenv.config();
 
+// Clear any environment variables that might interfere with Puppeteer
+delete process.env.PUPPETEER_EXECUTABLE_PATH;
+// Force use bundled Chromium
+process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'false';
+// Set correct Chromium path for local development
+process.env.PUPPETEER_EXECUTABLE_PATH = '/Users/mac/.cache/puppeteer/chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
+console.log('🚀 Server starting - Set Chromium path for local development');
+
+dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json()); // Add JSON parsing middleware
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Import Puppeteer for testing
+import puppeteer from 'puppeteer';
+
+// Test endpoint to verify Puppeteer
+app.get('/test-puppeteer', async (req, res) => {
+  try {
+    console.log('🧪 Testing Puppeteer in server...');
+    
+    const browser = await puppeteer.launch({
+      headless: false,
+      executablePath: '/Users/mac/.cache/puppeteer/chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    
+    console.log('✅ Puppeteer launched successfully in server!');
+    
+    const page = await browser.newPage();
+    await page.goto('https://www.google.com');
+    
+    await browser.close();
+    console.log('✅ Puppeteer test completed in server!');
+    
+    res.json({ success: true, message: 'Puppeteer working in server!' });
+  } catch (error) {
+    console.error('❌ Puppeteer test failed in server:', error.message);
+    res.json({ success: false, error: error.message });
+  }
+});
 
 app.get('/signature', (req, res) => {
   const { meetingNumber, role } = req.query;

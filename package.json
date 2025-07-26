@@ -5,17 +5,23 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
-    "build": "echo 'No build step required'"
+    "dev": "NODE_ENV=development nodemon server.js",
+    "build": "echo 'No build step required'",
+    "local": "NODE_ENV=development node server.js",
+    "test": "NODE_ENV=development node test.js"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "dotenv": "^16.4.5",
     "@zoom/meetingsdk": "^4.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^3.3.2",
     "puppeteer": "^24.15.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
   }
 }
