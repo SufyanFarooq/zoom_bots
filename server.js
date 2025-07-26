@@ -104,6 +104,58 @@ app.get('/bot-status', (req, res) => {
   res.json(status);
 });
 
+// Detailed bot status endpoint
+app.get('/detailed-bot-status', async (req, res) => {
+  try {
+    const status = getBotStatus();
+    
+    // Check if bots are still connected
+    const detailedStatus = {
+      ...status,
+      botDetails: []
+    };
+    
+    for (const botName of status.botNames) {
+      try {
+        // Find the bot's page
+        const botPage = activePages.find(p => p.userName === botName);
+        if (botPage && botPage.page) {
+          const pageInfo = await botPage.page.evaluate(() => {
+            return {
+              url: window.location.href,
+              title: document.title,
+              isConnected: !window.location.href.includes('/wc/join/'),
+              timestamp: new Date().toISOString()
+            };
+          });
+          
+          detailedStatus.botDetails.push({
+            name: botName,
+            ...pageInfo
+          });
+        } else {
+          detailedStatus.botDetails.push({
+            name: botName,
+            status: 'page_not_found',
+            timestamp: new Date().toISOString()
+          });
+        }
+      } catch (err) {
+        detailedStatus.botDetails.push({
+          name: botName,
+          status: 'error',
+          error: err.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+    
+    res.json(detailedStatus);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Debug endpoint to test single bot join
 app.post('/debug-join', async (req, res) => {
   try {
