@@ -81,7 +81,60 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         '--disable-features=VizDisplayCompositor',
         '--disable-blink-features=AutomationControlled',
         '--disable-features=site-per-process',
-        '--disable-site-isolation-trials'
+        '--disable-site-isolation-trials',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-images',
+        '--disable-javascript',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--hide-scrollbars',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-client-side-phishing-detection',
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+        '--disable-domain-reliability',
+        '--disable-features=AudioServiceOutOfProcess',
+        '--disable-features=VizDisplayCompositor',
+        '--single-process',
+        '--disable-software-rasterizer',
+        '--disable-dev-shm-usage',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-images',
+        '--disable-javascript',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--hide-scrollbars',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-client-side-phishing-detection',
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+        '--disable-domain-reliability',
+        '--disable-features=AudioServiceOutOfProcess',
+        '--disable-features=VizDisplayCompositor'
       ]
     });
 
@@ -95,6 +148,32 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
     // Set user agent
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    // Add stealth properties to avoid detection
+    await page.evaluateOnNewDocument(() => {
+      // Override webdriver property
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
+      
+      // Override plugins
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [1, 2, 3, 4, 5],
+      });
+      
+      // Override languages
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en'],
+      });
+      
+      // Override permissions
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters) => (
+        parameters.name === 'notifications' ?
+          Promise.resolve({ state: Notification.permission }) :
+          originalQuery(parameters)
+      );
+    });
     
     // Pre-accept cookies by setting them before page load
     await page.setCookie({
@@ -125,6 +204,10 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
     // Wait for page to load
     await new Promise(resolve => setTimeout(resolve, 8000));
+    
+    // Add human-like mouse movements
+    await page.mouse.move(Math.random() * 500, Math.random() * 500);
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Debug: Take screenshot to see what's on the page
     try {
@@ -593,19 +676,65 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     const currentUrl = page.url();
     console.log(`Current URL for ${userName}: ${currentUrl}`);
     
-    // Check if we're in a meeting (URL should change)
-    if (currentUrl.includes('/wc/join/') && !currentUrl.includes('meeting')) {
-      console.log(`Still on join page for ${userName}, checking for errors...`);
+    // Wait for meeting interface to load
+    try {
+      // Wait for meeting-specific elements
+      await page.waitForSelector('.meeting-client', { timeout: 30000 });
+      console.log(`Meeting interface loaded for ${userName}`);
       
-      // Check for error messages
-      const errorMessage = await page.evaluate(() => {
-        const errorElements = document.querySelectorAll('.error-message, .alert, .error, [class*="error"]');
-        return Array.from(errorElements).map(el => el.textContent?.trim()).filter(Boolean);
+      // Wait a bit more for full meeting load
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      
+      // Check if we're actually in the meeting
+      const meetingStatus = await page.evaluate(() => {
+        // Look for meeting-specific elements
+        const meetingElements = [
+          '.meeting-client',
+          '.meeting-client-inner',
+          '.meeting-client__footer',
+          '.meeting-client__main',
+          '.meeting-client__header',
+          '.meeting-client__participants',
+          '.meeting-client__chat',
+          '.meeting-client__video',
+          '.meeting-client__audio'
+        ];
+        
+        const foundElements = meetingElements.filter(selector => 
+          document.querySelector(selector) !== null
+        );
+        
+        return {
+          inMeeting: foundElements.length > 0,
+          foundElements: foundElements,
+          pageTitle: document.title,
+          url: window.location.href
+        };
       });
       
-      if (errorMessage.length > 0) {
-        console.log(`Error messages found for ${userName}:`, errorMessage);
-        throw new Error(`Join failed: ${errorMessage.join(', ')}`);
+      console.log(`Meeting status for ${userName}:`, meetingStatus);
+      
+      if (!meetingStatus.inMeeting) {
+        throw new Error(`Not in meeting interface for ${userName}`);
+      }
+      
+    } catch (meetingErr) {
+      console.log(`Meeting interface check failed for ${userName}:`, meetingErr.message);
+      
+      // Check if we're in a meeting (URL should change)
+      if (currentUrl.includes('/wc/join/') && !currentUrl.includes('meeting')) {
+        console.log(`Still on join page for ${userName}, checking for errors...`);
+        
+        // Check for error messages
+        const errorMessage = await page.evaluate(() => {
+          const errorElements = document.querySelectorAll('.error-message, .alert, .error, [class*="error"]');
+          return Array.from(errorElements).map(el => el.textContent?.trim()).filter(Boolean);
+        });
+        
+        if (errorMessage.length > 0) {
+          console.log(`Error messages found for ${userName}:`, errorMessage);
+          throw new Error(`Join failed: ${errorMessage.join(', ')}`);
+        }
       }
     }
     
