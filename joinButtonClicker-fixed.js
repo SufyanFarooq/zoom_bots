@@ -168,6 +168,26 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     // Enter passcode
     console.log(`Entering passcode for ${userName}...`);
     try {
+      // Wait a bit more for page to fully load after cookie popup
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Take screenshot before passcode attempt
+      await page.screenshot({ path: `/tmp/${userName}_before_passcode.png` });
+      console.log(`Before passcode screenshot saved for ${userName}`);
+      
+      // List all inputs for debugging
+      const allInputs = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('input')).map(input => ({
+          type: input.type,
+          id: input.id,
+          name: input.name,
+          placeholder: input.placeholder,
+          className: input.className,
+          visible: input.offsetParent !== null
+        }));
+      });
+      console.log(`All inputs for ${userName}:`, allInputs);
+      
       // Try multiple selectors for passcode input
       const passcodeSelectors = [
         '#input-for-pwd',
@@ -177,7 +197,9 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         'input[name*="passcode"]',
         'input[name*="password"]',
         'input[aria-label*="passcode"]',
-        'input[aria-label*="password"]'
+        'input[aria-label*="password"]',
+        'input[id*="pwd"]',
+        'input[id*="pass"]'
       ];
       
       let passcodeInput = null;
