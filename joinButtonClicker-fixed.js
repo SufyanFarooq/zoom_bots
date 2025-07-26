@@ -83,7 +83,17 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
     // Navigate to Zoom join URL
-    const zoomJoinUrl = `https://zoom.us/wc/join/${meetingNumber}`;
+    let zoomJoinUrl;
+    if (process.env.NODE_ENV === 'production') {
+      // Use direct app.zoom.us URL for production to avoid Terms of Service page
+      zoomJoinUrl = `https://app.zoom.us/wc/${meetingNumber}/join`;
+      console.log(`Using production URL for ${userName}: ${zoomJoinUrl}`);
+    } else {
+      // Use standard URL for local development
+      zoomJoinUrl = `https://zoom.us/wc/join/${meetingNumber}`;
+      console.log(`Using local URL for ${userName}: ${zoomJoinUrl}`);
+    }
+    
     console.log(`Navigating to: ${zoomJoinUrl}`);
     
     await page.goto(zoomJoinUrl, { waitUntil: 'networkidle2', timeout: 60000 });
