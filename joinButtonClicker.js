@@ -349,7 +349,15 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       'button[class*="preview-join-button"]',
       'button[aria-label*="Join"]',
       'button[type="submit"]',
-      'button:contains("Join")'
+      'button:contains("Join")',
+      '#joinBtn',
+      'button[class*="join"]',
+      'button[class*="submit"]',
+      'input[type="submit"]',
+      'button.btn-primary',
+      'button.btn',
+      'button[class*="btn-primary"]',
+      'button[class*="btn"]'
     ];
     
     let joinButton = null;
@@ -367,15 +375,36 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
     if (joinButton) {
       console.log(`Clicking join button for ${userName}...`);
-      await joinButton.click();
-      console.log(`Join button clicked successfully for ${userName}`);
+      try {
+        await joinButton.click();
+        console.log(`Join button clicked successfully for ${userName}`);
+      } catch (err) {
+        console.log(`Direct click failed for ${userName}, trying page.evaluate...`);
+        // Fallback to page.evaluate
+        const clicked = await page.evaluate((selector) => {
+          const btn = document.querySelector(selector);
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          return false;
+        }, joinSelectors.find(s => joinButton && joinButton._selector === s) || joinSelectors[0]);
+        
+        if (clicked) {
+          console.log(`Join button clicked via page.evaluate for ${userName}`);
+        } else {
+          throw new Error(`Failed to click join button for ${userName}`);
+        }
+      }
     } else {
       // Try to find any button with "Join" text using page.evaluate
       const joinButtonFound = await page.evaluate(() => {
         const buttons = Array.from(document.querySelectorAll('button'));
         const joinBtn = buttons.find(btn => 
           btn.textContent?.toLowerCase().includes('join') ||
-          btn.innerText?.toLowerCase().includes('join')
+          btn.innerText?.toLowerCase().includes('join') ||
+          btn.value?.toLowerCase().includes('join') ||
+          btn.getAttribute('aria-label')?.toLowerCase().includes('join')
         );
         if (joinBtn) {
           joinBtn.click();
@@ -387,22 +416,73 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       if (joinButtonFound) {
         console.log(`Join button clicked via text search for ${userName}`);
       } else {
-        // Debug: Show all available buttons
-        const allButtons = await page.evaluate(() => {
-          return Array.from(document.querySelectorAll('button')).map(btn => ({
-            text: btn.textContent?.trim(),
-            innerText: btn.innerText?.trim(),
-            className: btn.className,
-            id: btn.id
-          }));
+        // Try to find any submit button
+        const submitButtonFound = await page.evaluate(() => {
+          const submitButtons = Array.from(document.querySelectorAll('button[type="submit"], input[type="submit"]'));
+          if (submitButtons.length > 0) {
+            submitButtons[0].click();
+            return true;
+          }
+          return false;
         });
-        console.log(`Available buttons for ${userName}:`, allButtons);
-        throw new Error(`Join button not found for ${userName}`);
+        
+        if (submitButtonFound) {
+          console.log(`Submit button clicked for ${userName}`);
+        } else {
+          // Try to submit the form directly
+          const formSubmitted = await page.evaluate(() => {
+            const forms = Array.from(document.querySelectorAll('form'));
+            if (forms.length > 0) {
+              forms[0].submit();
+              return true;
+            }
+            return false;
+          });
+          
+          if (formSubmitted) {
+            console.log(`Form submitted for ${userName}`);
+          } else {
+            // Debug: Show all available buttons
+            const allButtons = await page.evaluate(() => {
+              return Array.from(document.querySelectorAll('button, input[type="submit"]')).map(btn => ({
+                text: btn.textContent?.trim(),
+                innerText: btn.innerText?.trim(),
+                value: btn.value?.trim(),
+                className: btn.className,
+                id: btn.id,
+                type: btn.type,
+                ariaLabel: btn.getAttribute('aria-label')
+              }));
+            });
+            console.log(`Available buttons for ${userName}:`, allButtons);
+            throw new Error(`Join button not found for ${userName}`);
+          }
+        }
       }
     }
     
     // Wait to see if join was successful
     await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Check if we're still on the same page or if join was successful
+    const currentUrl = page.url();
+    console.log(`Current URL for ${userName}: ${currentUrl}`);
+    
+    // Check if we're in a meeting (URL should change)
+    if (currentUrl.includes('/wc/join/') && !currentUrl.includes('meeting')) {
+      console.log(`Still on join page for ${userName}, checking for errors...`);
+      
+      // Check for error messages
+      const errorMessage = await page.evaluate(() => {
+        const errorElements = document.querySelectorAll('.error-message, .alert, .error, [class*="error"]');
+        return Array.from(errorElements).map(el => el.textContent?.trim()).filter(Boolean);
+      });
+      
+      if (errorMessage.length > 0) {
+        console.log(`Error messages found for ${userName}:`, errorMessage);
+        throw new Error(`Join failed: ${errorMessage.join(', ')}`);
+      }
+    }
     
     return {
       success: true,
