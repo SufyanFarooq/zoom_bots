@@ -61,7 +61,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       launchOptions.executablePath = '/usr/bin/chromium-browser';
       console.log('Using production Chromium path');
     } else {
-      launchOptions.executablePath = '/Users/mac/.cache/puppeteer/chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
+      launchOptions.executablePath = './chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
       console.log('Using local Chromium path');
     }
     
