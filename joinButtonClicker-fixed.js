@@ -92,6 +92,55 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     // Wait for page to load
     await new Promise(resolve => setTimeout(resolve, 3000));
     
+    // Handle cookie consent popup if present
+    console.log(`Checking for cookie popup for ${userName}...`);
+    try {
+      // Try to find and click "Accept Cookies" button
+      const cookieSelectors = [
+        'button:contains("Accept Cookies")',
+        'button[class*="accept"]',
+        'button[id*="accept"]',
+        'button:contains("Accept")',
+        '#onetrust-accept-btn-handler',
+        '.onetrust-accept-btn-handler'
+      ];
+      
+      for (const selector of cookieSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 2000 });
+          await page.click(selector);
+          console.log(`Cookie popup accepted for ${userName} using selector: ${selector}`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          break;
+        } catch (e) {
+          // Continue to next selector
+        }
+      }
+      
+      // Alternative: Use page.evaluate to find and click accept button
+      const cookieAccepted = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button'));
+        const acceptButton = buttons.find(btn => 
+          btn.textContent.toLowerCase().includes('accept') ||
+          btn.textContent.toLowerCase().includes('accept cookies') ||
+          btn.className.toLowerCase().includes('accept') ||
+          btn.id.toLowerCase().includes('accept')
+        );
+        if (acceptButton) {
+          acceptButton.click();
+          return true;
+        }
+        return false;
+      });
+      
+      if (cookieAccepted) {
+        console.log(`Cookie popup accepted via page.evaluate for ${userName}`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } catch (error) {
+      console.log(`No cookie popup found for ${userName} or already handled`);
+    }
+    
     // Take debug screenshot
     await page.screenshot({ path: `/tmp/${userName}_debug_initial.png` });
     console.log(`Debug screenshot saved for ${userName}`);
