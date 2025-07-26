@@ -13,7 +13,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
     browser = await puppeteer.launch({
       headless: true, // Always headless on server
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
