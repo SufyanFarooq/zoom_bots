@@ -17,7 +17,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
     // Simple launch options - use correct Chromium path for production
     const launchOptions = {
-      headless: false, // Always show browser for debugging
+      headless: process.env.NODE_ENV === 'production' ? true : false, // Headless in production
       protocolTimeout: 120000, // 2 minutes timeout
       args: [
         '--no-sandbox',
