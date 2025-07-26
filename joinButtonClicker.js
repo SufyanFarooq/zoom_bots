@@ -14,6 +14,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     browser = await puppeteer.launch({
       headless: true, // Always headless on server
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+      protocolTimeout: 120000, // 2 minutes timeout
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -118,7 +119,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     const zoomJoinUrl = `https://zoom.us/wc/join/${meetingNumber}`;
     console.log(`Navigating to: ${zoomJoinUrl}`);
     
-    await page.goto(zoomJoinUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(zoomJoinUrl, { waitUntil: 'networkidle2', timeout: 120000 });
     
     console.log(`Page loaded for ${userName}, waiting for form...`);
     
@@ -126,8 +127,12 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     await new Promise(resolve => setTimeout(resolve, 8000));
     
     // Debug: Take screenshot to see what's on the page
-    await page.screenshot({ path: `/tmp/${userName}_debug.png` });
-    console.log(`Screenshot saved for ${userName}`);
+    try {
+      await page.screenshot({ path: `/tmp/${userName}_debug.png` });
+      console.log(`Screenshot saved for ${userName}`);
+    } catch (screenshotErr) {
+      console.log(`Screenshot failed for ${userName}:`, screenshotErr.message);
+    }
     
     // Handle cookie consent popup first
     console.log(`Checking for cookie consent popup for ${userName}...`);
@@ -615,19 +620,21 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
     // Log additional debugging info
     try {
-      const pageInfo = await page.evaluate(() => {
-        return {
-          url: window.location.href,
-          title: document.title,
-          buttons: Array.from(document.querySelectorAll('button')).map(btn => ({
-            text: btn.textContent?.trim(),
-            className: btn.className,
-            id: btn.id,
-            type: btn.type
-          }))
-        };
-      });
-      console.log(`Page info for ${userName}:`, pageInfo);
+      if (page) {
+        const pageInfo = await page.evaluate(() => {
+          return {
+            url: window.location.href,
+            title: document.title,
+            buttons: Array.from(document.querySelectorAll('button')).map(btn => ({
+              text: btn.textContent?.trim(),
+              className: btn.className,
+              id: btn.id,
+              type: btn.type
+            }))
+          };
+        });
+        console.log(`Page info for ${userName}:`, pageInfo);
+      }
     } catch (debugErr) {
       console.log(`Could not get debug info for ${userName}:`, debugErr.message);
     }
@@ -637,6 +644,16 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       error: error.message,
       userName: userName
     };
+  } finally {
+    // Clean up browser if it exists
+    try {
+      if (browser) {
+        await browser.close();
+        console.log(`Browser closed for ${userName}`);
+      }
+    } catch (cleanupErr) {
+      console.log(`Cleanup error for ${userName}:`, cleanupErr.message);
+    }
   }
 }
 

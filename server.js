@@ -47,24 +47,28 @@ app.post('/join-meeting', async (req, res) => {
       botNames.push(botName);
     }
     
-    // Join bots in parallel
-    const joinPromises = botNames.map(botName => 
-      joinZoomMeeting(meetingId, passcode || '', botName)
-    );
-    
-    const joinResults = await Promise.allSettled(joinPromises);
-    
-    joinResults.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        results.push(result.value);
-      } else {
+    // Join bots sequentially to avoid resource conflicts
+    for (let i = 0; i < botNames.length; i++) {
+      const botName = botNames[i];
+      console.log(`Joining bot ${i + 1}/${botCount}: ${botName}`);
+      
+      try {
+        const result = await joinZoomMeeting(meetingId, passcode || '', botName);
+        results.push(result);
+        
+        // Wait between bots to avoid overwhelming the server
+        if (i < botNames.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      } catch (error) {
+        console.error(`Error joining ${botName}:`, error);
         results.push({
           success: false,
-          error: result.reason.message,
-          userName: botNames[index]
+          error: error.message,
+          userName: botName
         });
       }
-    });
+    }
     
     res.json({ results });
     
