@@ -642,6 +642,68 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       }
     }
     
+    // Wait to see if join was successful
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Check for Terms of Service consent page
+    console.log(`Checking for Terms of Service consent for ${userName}...`);
+    try {
+      const termsSelectors = [
+        '#wc_agree1',
+        '#wc_agree2',
+        'button[class*="agree"]',
+        'button:contains("I Agree")',
+        'button[text*="Agree"]',
+        'button[text*="agree"]'
+      ];
+      
+      let termsConsentBtn = null;
+      for (const selector of termsSelectors) {
+        try {
+          termsConsentBtn = await page.$(selector);
+          if (termsConsentBtn) {
+            console.log(`Found Terms consent button for ${userName} using selector: ${selector}`);
+            break;
+          }
+        } catch (err) {
+          continue;
+        }
+      }
+      
+      if (termsConsentBtn) {
+        console.log(`Clicking Terms consent for ${userName}...`);
+        try {
+          await termsConsentBtn.click();
+          console.log(`Terms consent clicked for ${userName}`);
+        } catch (err) {
+          console.log(`Direct click failed for Terms consent, trying page.evaluate...`);
+          const clicked = await page.evaluate(() => {
+            const agreeBtn = document.querySelector('#wc_agree1') || 
+                           document.querySelector('#wc_agree2') ||
+                           Array.from(document.querySelectorAll('button')).find(btn => 
+                             btn.textContent?.toLowerCase().includes('agree')
+                           );
+            if (agreeBtn) {
+              agreeBtn.click();
+              return true;
+            }
+            return false;
+          });
+          
+          if (clicked) {
+            console.log(`Terms consent clicked via page.evaluate for ${userName}`);
+          }
+        }
+        
+        // Wait for page to load after consent
+        await new Promise(resolve => setTimeout(resolve, 8000));
+      } else {
+        console.log(`No Terms consent button found for ${userName}`);
+      }
+    } catch (err) {
+      console.log(`Terms consent handling failed for ${userName}:`, err.message);
+    }
+    
     // Check if we're still on the same page or if join was successful
     const currentUrl = page.url();
     console.log(`Current URL for ${userName}: ${currentUrl}`);
