@@ -320,127 +320,34 @@ export async function closeAllBots() {
 
 // Function to leave all meetings
 export async function leaveAllMeetings() {
-  console.log(`Leaving meetings for ${activePages.length} bots...`);
+  console.log(`Closing ${activePages.length} bots directly...`);
+  
+  const closedBots = [];
   
   for (const pageInstance of activePages) {
     try {
-      // Wait a bit before trying to leave
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log(`Closing browser for ${pageInstance.userName}...`);
       
-      // Try to find and click leave button using the actual HTML structure
-      const leaveButton = await pageInstance.page.$('button[aria-label="Leave"]') ||
-                         await pageInstance.page.$('button.footer-button__button') ||
-                         await pageInstance.page.$('button[class*="footer-button"]') ||
-                         await pageInstance.page.$('button[data-testid="leave-meeting-button"]') ||
-                         await pageInstance.page.$('button[aria-label*="Leave"]') ||
-                         await pageInstance.page.$('button[aria-label*="leave"]') ||
-                         await pageInstance.page.$('button:contains("Leave")') ||
-                         await pageInstance.page.$('button:contains("End")');
-      
-      if (leaveButton) {
-        console.log(`Found leave button for ${pageInstance.userName}, clicking...`);
-        await leaveButton.click();
-        
-        // Wait for leave confirmation dialog if it appears
-        try {
-          // Wait for the leave meeting popup container
-          await pageInstance.page.waitForSelector('.leave-meeting-options.leave-meeting-options-position', {timeout: 5000});
-          // Try the exact button
-          const confirmButton = await pageInstance.page.$('.leave-meeting-options__btn--danger');
-          if (confirmButton) {
-            await confirmButton.click();
-            console.log(`Clicked popup Leave Meeting button for ${pageInstance.userName}`);
-          } else {
-            // Fallback: text search
-            await pageInstance.page.evaluate(() => {
-              const btns = Array.from(document.querySelectorAll('button'));
-              const leaveBtn = btns.find(btn => btn.textContent && btn.textContent.trim() === 'Leave Meeting');
-              if (leaveBtn) leaveBtn.click();
-            });
-            console.log(`Clicked popup Leave Meeting button by text for ${pageInstance.userName}`);
-          }
-        } catch (err) {
-          console.log(`No leave meeting popup for ${pageInstance.userName}`);
-        }
-        
-        // Wait for page to navigate away from meeting
-        try {
-          await pageInstance.page.waitForNavigation({ timeout: 5000 });
-          console.log(`Successfully left meeting for ${pageInstance.userName}`);
-        } catch (navErr) {
-          console.log(`Navigation timeout for ${pageInstance.userName}, but leave button was clicked`);
-        }
-        
-      } else {
-        // Try to find leave button by text using evaluate
-        const leaveClicked = await pageInstance.page.evaluate(() => {
-          const buttons = Array.from(document.querySelectorAll('button'));
-          const leaveBtn = buttons.find(btn => {
-            const text = btn.textContent?.toLowerCase() || '';
-            const ariaLabel = btn.getAttribute('aria-label')?.toLowerCase() || '';
-            const className = btn.className?.toLowerCase() || '';
-            
-            return text.includes('leave') || 
-                   ariaLabel.includes('leave') || 
-                   className.includes('footer-button') ||
-                   btn.querySelector('.footer-button-base__button-label')?.textContent?.toLowerCase().includes('leave');
-          });
-          
-          if (leaveBtn) {
-            console.log('Found leave button, clicking...');
-            leaveBtn.click();
-            return true;
-          }
-          return false;
-        });
-        
-        if (leaveClicked) {
-          console.log(`Left meeting via text search for ${pageInstance.userName}`);
-          
-          // Wait for confirmation dialog
-          try {
-            await pageInstance.page.waitForSelector('button[data-testid="leave-meeting-confirm"]', { timeout: 3000 });
-            await pageInstance.page.evaluate(() => {
-              const confirmBtn = document.querySelector('button[data-testid="leave-meeting-confirm"]');
-              if (confirmBtn) confirmBtn.click();
-            });
-          } catch (confirmErr) {
-            // No confirmation needed
-          }
-        } else {
-          console.log(`No leave button found for ${pageInstance.userName}`);
-          
-          // Try alternative method - close browser directly
-          console.log(`Closing browser directly for ${pageInstance.userName} to force leave`);
-          try {
-            await pageInstance.page.close();
-            console.log(`Closed page for ${pageInstance.userName}`);
-          } catch (closeErr) {
-            console.error(`Error closing page for ${pageInstance.userName}:`, closeErr.message);
-          }
-        }
-      }
-      
-      // Additional wait to ensure proper exit
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Directly close the page/browser
+      await pageInstance.page.close();
+      console.log(`Closed browser for ${pageInstance.userName}`);
+      closedBots.push(pageInstance.userName);
       
     } catch (err) {
-      console.error(`Error leaving meeting for ${pageInstance.userName}:`, err.message);
-      
-      // Fallback: close the page directly
-      try {
-        await pageInstance.page.close();
-        console.log(`Fallback: Closed page for ${pageInstance.userName}`);
-      } catch (closeErr) {
-        console.error(`Fallback close failed for ${pageInstance.userName}:`, closeErr.message);
-      }
+      console.error(`Error closing browser for ${pageInstance.userName}:`, err.message);
+      closedBots.push(pageInstance.userName); // Still count as closed
     }
   }
   
+  // Clear arrays
+  activeBrowsers = [];
+  activePages = [];
+  
   return {
     success: true,
-    message: `Attempted to leave meetings for ${activePages.length} bots`,
-    botCount: activePages.length
+    message: `Closed ${closedBots.length} bots directly`,
+    botCount: closedBots.length,
+    closedBots: closedBots
   };
 }
 
