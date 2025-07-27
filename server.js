@@ -1,77 +1,55 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { generateSignature } from './signature.js';
 import { joinZoomMeeting, closeAllBots, leaveAllMeetings, getBotStatus } from './joinButtonClicker-fixed.js';
 import dotenv from 'dotenv';
-import fs from 'fs';
 
-// Clear any environment variables that might interfere with Puppeteer
-delete process.env.PUPPETEER_EXECUTABLE_PATH;
-// Force use bundled Chromium
-process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'false';
-// Set correct Chromium path for local development
-process.env.PUPPETEER_EXECUTABLE_PATH = '/Users/mac/.cache/puppeteer/chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
-// Set NODE_ENV to production for Railway
-process.env.NODE_ENV = 'production';
-console.log('🚀 Server starting - Set Chromium path for production deployment');
+// Set environment for local development
+process.env.NODE_ENV = 'development';
+console.log('🚀 Server starting for local development');
 
 dotenv.config();
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.json()); // Add JSON parsing middleware
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Import Puppeteer for testing
-import puppeteer from 'puppeteer';
+// Function to generate real user names
+function generateRealName() {
+  const firstNames = [
+    'Ali', 'Sara', 'Omar', 'Ayesha', 'Zain', 'Fatima', 'Usman', 'Hira', 'Bilal', 'Mina',
+    'Hamza', 'Noor', 'Danish', 'Iqra', 'Saad', 'Sana', 'Raza', 'Mariam', 'Tariq', 'Laila',
+    'Ahmed', 'Zara', 'Hassan', 'Aisha', 'Yusuf', 'Khadija', 'Ibrahim', 'Maryam', 'Khalid', 'Amina',
+    'Abdullah', 'Fatima', 'Muhammad', 'Zainab', 'Yasin', 'Hafsa', 'Mustafa', 'Ayesha', 'Junaid', 'Sadia'
+  ];
+  
+  const lastNames = [
+    'Khan', 'Ahmed', 'Ali', 'Hassan', 'Hussain', 'Malik', 'Raza', 'Shah', 'Farooq', 'Iqbal',
+    'Saleem', 'Rashid', 'Nadeem', 'Saeed', 'Waqar', 'Tariq', 'Usman', 'Bilal', 'Danish', 'Saad'
+  ];
+  
+  const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+  const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+  const randomNumber = Math.floor(Math.random() * 9999) + 1000;
+  
+  return `${firstName}_${lastName}_${randomNumber}`;
+}
 
-// Test endpoint to verify Puppeteer
-app.get('/test-puppeteer', async (req, res) => {
-  try {
-    console.log('🧪 Testing Puppeteer in server...');
-    
-    const browser = await puppeteer.launch({
-      headless: false,
-      executablePath: '/Users/mac/.cache/puppeteer/chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    
-    console.log('✅ Puppeteer launched successfully in server!');
-    
-    const page = await browser.newPage();
-    await page.goto('https://www.google.com');
-    
-    await browser.close();
-    console.log('✅ Puppeteer test completed in server!');
-    
-    res.json({ success: true, message: 'Puppeteer working in server!' });
-  } catch (error) {
-    console.error('❌ Puppeteer test failed in server:', error.message);
-    res.json({ success: false, error: error.message });
-  }
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', environment: 'local' });
 });
 
-app.get('/signature', (req, res) => {
-  const { meetingNumber, role } = req.query;
-  if (!meetingNumber || !role) {
-    return res.status(400).json({ error: 'meetingNumber and role required' });
-  }
-  try {
-    const signature = generateSignature(meetingNumber, role);
-    res.json({ signature });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
+// Join meeting endpoint
 app.post('/join-meeting', async (req, res) => {
   try {
-    const { meetingId, passcode, botCount } = req.body;
+    const { meetingId, passcode, botCount = 3 } = req.body;
     
-    if (!meetingId || !botCount) {
-      return res.status(400).json({ error: 'meetingId and botCount required' });
+    if (!meetingId || !passcode) {
+      return res.status(400).json({ error: 'meetingId and passcode required' });
     }
     
     console.log(`Starting ${botCount} bots to join meeting: ${meetingId}`);
@@ -79,29 +57,17 @@ app.post('/join-meeting', async (req, res) => {
     const results = [];
     const botNames = [];
     
-    // Generate random bot names
     for (let i = 0; i < botCount; i++) {
-      const firstName = ['Ali', 'Fatima', 'Ahmed', 'Ayesha', 'Usman', 'Mariam', 'Bilal', 'Zara', 'Danish', 'Noor', 'Saad', 'Hira', 'Tariq', 'Sana', 'Zain', 'Aisha', 'Hassan', 'Layla', 'Omar', 'Yasmin'];
-      const lastName = Math.floor(Math.random() * 9999) + 1000;
-      const botName = `${firstName[Math.floor(Math.random() * firstName.length)]}_${lastName}`;
+      const botName = generateRealName();
       botNames.push(botName);
-    }
-    
-    // Join bots sequentially to avoid resource conflicts
-    for (let i = 0; i < botNames.length; i++) {
-      const botName = botNames[i];
+      
       console.log(`Joining bot ${i + 1}/${botCount}: ${botName}`);
       
       try {
-        const result = await joinZoomMeeting(meetingId, passcode || '', botName);
+        const result = await joinZoomMeeting(meetingId, passcode, botName);
         results.push(result);
-        
-        // Wait between bots to avoid overwhelming the server
-        if (i < botNames.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 5000));
-        }
       } catch (error) {
-        console.error(`Error joining ${botName}:`, error);
+        console.log(`Error for ${botName}: ${error.message}`);
         results.push({
           success: false,
           error: error.message,
@@ -111,199 +77,60 @@ app.post('/join-meeting', async (req, res) => {
     }
     
     res.json({ results });
-    
   } catch (error) {
     console.error('Join meeting error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
+// Close all bots endpoint
 app.post('/close-all-bots', async (req, res) => {
   try {
     const result = await closeAllBots();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.json({ success: true, message: `Closed ${result} bots` });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
+// Leave all meetings endpoint
 app.post('/leave-all-meetings', async (req, res) => {
   try {
     const result = await leaveAllMeetings();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.json({ success: true, message: `Left ${result} meetings` });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
+// Bot status endpoint
 app.get('/bot-status', (req, res) => {
   const status = getBotStatus();
   res.json(status);
 });
 
-// Detailed bot status endpoint
-app.get('/detailed-bot-status', async (req, res) => {
-  try {
-    const status = getBotStatus();
-    
-    // Check if bots are still connected
-    const detailedStatus = {
-      ...status,
-      botDetails: []
-    };
-    
-    for (const botName of status.botNames) {
-      try {
-        // Find the bot's page
-        const botPage = activePages.find(p => p.userName === botName);
-        if (botPage && botPage.page) {
-          const pageInfo = await botPage.page.evaluate(() => {
-            return {
-              url: window.location.href,
-              title: document.title,
-              isConnected: !window.location.href.includes('/wc/join/'),
-              timestamp: new Date().toISOString()
-            };
-          });
-          
-          detailedStatus.botDetails.push({
-            name: botName,
-            ...pageInfo
-          });
-        } else {
-          detailedStatus.botDetails.push({
-            name: botName,
-            status: 'page_not_found',
-            timestamp: new Date().toISOString()
-          });
-        }
-      } catch (err) {
-        detailedStatus.botDetails.push({
-          name: botName,
-          status: 'error',
-          error: err.message,
-          timestamp: new Date().toISOString()
-        });
-      }
-    }
-    
-    res.json(detailedStatus);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// List all screenshots
-app.get('/screenshots', (req, res) => {
-  try {
-    const screenshotsDir = '/tmp';
-    const files = fs.readdirSync(screenshotsDir);
-    const screenshotFiles = files.filter(file => file.endsWith('.png'));
-    
-    const screenshots = screenshotFiles.map(file => {
-      const filePath = path.join(screenshotsDir, file);
-      const stats = fs.statSync(filePath);
-      return {
-        name: file,
-        size: stats.size,
-        created: stats.birthtime,
-        path: `/screenshot/${file}`
-      };
-    });
-    
-    res.json({
-      success: true,
-      screenshots: screenshots,
-      total: screenshots.length
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Download specific screenshot
-app.get('/screenshot/:filename', (req, res) => {
-  try {
-    const filename = req.params.filename;
-    const filePath = path.join('/tmp', filename);
-    
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Screenshot not found' });
-    }
-    
-    res.sendFile(filePath);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Delete all screenshots
-app.delete('/screenshots', (req, res) => {
-  try {
-    const screenshotsDir = '/tmp';
-    const files = fs.readdirSync(screenshotsDir);
-    const screenshotFiles = files.filter(file => file.endsWith('.png'));
-    
-    let deletedCount = 0;
-    screenshotFiles.forEach(file => {
-      try {
-        fs.unlinkSync(path.join(screenshotsDir, file));
-        deletedCount++;
-      } catch (err) {
-        console.log(`Failed to delete ${file}:`, err.message);
-      }
-    });
-    
-    res.json({
-      success: true,
-      message: `Deleted ${deletedCount} screenshots`,
-      deletedCount: deletedCount
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Debug endpoint to test single bot join
+// Debug join endpoint
 app.post('/debug-join', async (req, res) => {
   try {
-    const { meetingId, passcode, botName } = req.body;
+    const { meetingId, passcode, botName = 'TestBot' } = req.body;
     
-    if (!meetingId || !botName) {
-      return res.status(400).json({ error: 'Meeting ID and bot name required' });
+    if (!meetingId || !passcode) {
+      return res.status(400).json({ error: 'meetingId and passcode required' });
     }
     
     console.log(`Debug: Testing single bot join for ${botName}`);
-    const result = await joinZoomMeeting(meetingId, passcode || '', botName);
     
-    res.json({
-      success: true,
-      result: result,
-      message: 'Debug join completed'
-    });
+    const result = await joinZoomMeeting(meetingId, passcode, botName);
+    res.json({ success: true, result, message: 'Debug join completed' });
   } catch (error) {
     console.error('Debug join error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ error: error.message });
   }
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    memory: process.memoryUsage()
-  });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Local server running on http://localhost:${PORT}`);
+  console.log(`📱 Frontend: http://localhost:${PORT}`);
+  console.log(`🔧 Health check: http://localhost:${PORT}/health`);
 }); 

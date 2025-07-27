@@ -1,9 +1,29 @@
 import puppeteer from 'puppeteer';
 
-// Global array to track all browser instances
 let activeBrowsers = [];
 let activePages = [];
-let isClosing = false; // Flag to prevent multiple close operations
+let isClosing = false;
+
+// Function to generate real user names
+function generateRealName() {
+  const firstNames = [
+    'Ali', 'Sara', 'Omar', 'Ayesha', 'Zain', 'Fatima', 'Usman', 'Hira', 'Bilal', 'Mina',
+    'Hamza', 'Noor', 'Danish', 'Iqra', 'Saad', 'Sana', 'Raza', 'Mariam', 'Tariq', 'Laila',
+    'Ahmed', 'Zara', 'Hassan', 'Aisha', 'Yusuf', 'Khadija', 'Ibrahim', 'Maryam', 'Khalid', 'Amina',
+    'Abdullah', 'Fatima', 'Muhammad', 'Zainab', 'Yasin', 'Hafsa', 'Mustafa', 'Ayesha', 'Junaid', 'Sadia'
+  ];
+  
+  const lastNames = [
+    'Khan', 'Ahmed', 'Ali', 'Hassan', 'Hussain', 'Malik', 'Raza', 'Shah', 'Farooq', 'Iqbal',
+    'Saleem', 'Rashid', 'Nadeem', 'Saeed', 'Waqar', 'Tariq', 'Usman', 'Bilal', 'Danish', 'Saad'
+  ];
+  
+  const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+  const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+  const randomNumber = Math.floor(Math.random() * 9999) + 1000;
+  
+  return `${firstName}_${lastName}_${randomNumber}`;
+}
 
 export async function joinZoomMeeting(meetingNumber, passWord, userName) {
   let browser;
@@ -11,18 +31,13 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
   try {
     console.log(`Starting Puppeteer for ${userName} to join meeting: ${meetingNumber}`);
     
-    // Clear any environment variables that might interfere
-    delete process.env.PUPPETEER_EXECUTABLE_PATH;
-    console.log(`Cleared PUPPETEER_EXECUTABLE_PATH environment variable`);
-    
-    // Simple launch options - use correct Chromium path for production
+    // Launch options for local development
     const launchOptions = {
-      headless: process.env.NODE_ENV === 'production' ? true : false, // Headless in production
-      protocolTimeout: 120000, // 2 minutes timeout
+      headless: false, // Show browser for debugging
+      executablePath: './chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
         '--use-fake-ui-for-media-stream',
         '--use-fake-device-for-media-stream',
         '--disable-gpu',
@@ -30,47 +45,14 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         '--disable-images',
         '--mute-audio',
         '--disable-web-security',
-        '--disable-features=VizDisplayCompositor',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
-        '--disable-features=TranslateUI',
-        '--disable-ipc-flooding-protection',
-        '--disable-default-apps',
-        '--disable-sync',
-        '--disable-translate',
-        '--hide-scrollbars',
-        '--no-default-browser-check',
-        '--disable-component-extensions-with-background-pages',
-        '--disable-background-networking',
-        '--disable-client-side-phishing-detection',
-        '--disable-hang-monitor',
-        '--disable-prompt-on-repost',
-        '--disable-domain-reliability',
-        '--disable-features=AudioServiceOutOfProcess',
-        '--single-process',
-        '--disable-software-rasterizer',
-        '--disable-blink-features=AutomationControlled',
-        '--disable-features=site-per-process',
-        '--disable-site-isolation-trials'
+        '--disable-blink-features=AutomationControlled'
       ]
     };
     
-    // Set executablePath based on environment
-    if (process.env.NODE_ENV === 'production') {
-      launchOptions.executablePath = '/usr/bin/chromium-browser';
-      console.log('Using production Chromium path');
-    } else {
-      launchOptions.executablePath = './chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
-      console.log('Using local Chromium path');
-    }
-    
-    // NEVER set executablePath - use bundled Chromium
     console.log(`Launch options:`, { 
       headless: launchOptions.headless, 
       executablePath: launchOptions.executablePath,
-      argsCount: launchOptions.args.length,
-      environment: process.env.NODE_ENV
+      argsCount: launchOptions.args.length
     });
     
     browser = await puppeteer.launch(launchOptions);
@@ -95,29 +77,6 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     // Handle cookie consent popup if present
     console.log(`Checking for cookie popup for ${userName}...`);
     try {
-      // Try to find and click "Accept Cookies" button
-      const cookieSelectors = [
-        'button:contains("Accept Cookies")',
-        'button[class*="accept"]',
-        'button[id*="accept"]',
-        'button:contains("Accept")',
-        '#onetrust-accept-btn-handler',
-        '.onetrust-accept-btn-handler'
-      ];
-      
-      for (const selector of cookieSelectors) {
-        try {
-          await page.waitForSelector(selector, { timeout: 2000 });
-          await page.click(selector);
-          console.log(`Cookie popup accepted for ${userName} using selector: ${selector}`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          break;
-        } catch (e) {
-          // Continue to next selector
-        }
-      }
-      
-      // Alternative: Use page.evaluate to find and click accept button
       const cookieAccepted = await page.evaluate(() => {
         const buttons = Array.from(document.querySelectorAll('button'));
         const acceptButton = buttons.find(btn => 
@@ -134,115 +93,12 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       });
       
       if (cookieAccepted) {
-        console.log(`Cookie popup accepted via page.evaluate for ${userName}`);
+        console.log(`Cookie popup accepted for ${userName}`);
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Reload page after cookie popup to ensure form loads properly
-        console.log(`Reloading page for ${userName} after cookie popup...`);
-        await page.reload({ waitUntil: 'networkidle2' });
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        // Handle Terms of Service agreement if present
-        console.log(`Checking for Terms of Service for ${userName}...`);
-        try {
-          // Take screenshot before Terms handling
-          try {
-            await page.screenshot({ path: `/tmp/${userName}_before_terms.png` });
-            console.log(`Before Terms screenshot saved for ${userName}`);
-          } catch (screenshotError) {
-            console.log(`Terms screenshot failed for ${userName}: ${screenshotError.message}`);
-          }
-          
-          // List all buttons for debugging
-          const allButtons = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll('button')).map(btn => ({
-              text: btn.textContent.trim(),
-              id: btn.id,
-              className: btn.className,
-              visible: btn.offsetParent !== null
-            }));
-          });
-          console.log(`All buttons for ${userName}:`, allButtons);
-          
-          // Try to find and click "I Agree" button
-          const termsSelectors = [
-            'button:contains("I Agree")',
-            'button[class*="agree"]',
-            'button[id*="agree"]',
-            'button:contains("Agree")',
-            '#wc_agree1',
-            '#wc_agree2',
-            '.btn-primary',
-            'button.btn-primary',
-            'button[type="submit"]'
-          ];
-          
-          let termsAgreed = false;
-          for (const selector of termsSelectors) {
-            try {
-              await page.waitForSelector(selector, { timeout: 2000 });
-              await page.click(selector);
-              console.log(`Terms of Service agreed for ${userName} using selector: ${selector}`);
-              termsAgreed = true;
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              break;
-            } catch (e) {
-              console.log(`Terms selector failed for ${userName}: ${selector}`);
-            }
-          }
-          
-          if (!termsAgreed) {
-            // Alternative: Use page.evaluate to find and click agree button
-            const agreed = await page.evaluate(() => {
-              const buttons = Array.from(document.querySelectorAll('button'));
-              const agreeButton = buttons.find(btn => 
-                btn.textContent.toLowerCase().includes('agree') ||
-                btn.textContent.toLowerCase().includes('i agree') ||
-                btn.className.toLowerCase().includes('agree') ||
-                btn.id.toLowerCase().includes('agree') ||
-                btn.className.toLowerCase().includes('btn-primary')
-              );
-              if (agreeButton) {
-                agreeButton.click();
-                return true;
-              }
-              return false;
-            });
-            
-            if (agreed) {
-              console.log(`Terms of Service agreed via page.evaluate for ${userName}`);
-              termsAgreed = true;
-              await new Promise(resolve => setTimeout(resolve, 2000));
-            }
-          }
-          
-          if (termsAgreed) {
-            // Take screenshot after Terms handling
-            try {
-              await page.screenshot({ path: `/tmp/${userName}_after_terms.png` });
-              console.log(`After Terms screenshot saved for ${userName}`);
-            } catch (screenshotError) {
-              console.log(`After Terms screenshot failed for ${userName}: ${screenshotError.message}`);
-            }
-          }
-        } catch (error) {
-          console.log(`No Terms of Service found for ${userName} or already handled: ${error.message}`);
-        }
       }
     } catch (error) {
-      console.log(`No cookie popup found for ${userName} or already handled`);
+      console.log(`No cookie popup found for ${userName}`);
     }
-    
-    // Take debug screenshot
-    try {
-      await page.screenshot({ path: `/tmp/${userName}_debug_initial.png` });
-      console.log(`Debug screenshot saved for ${userName}`);
-    } catch (screenshotError) {
-      console.log(`Debug screenshot failed for ${userName}: ${screenshotError.message}`);
-    }
-    
-    // Handle camera/microphone permissions if present
-    console.log(`Looking for meeting form for ${userName}...`);
     
     // Enter bot name
     console.log(`Entering name for ${userName}...`);
@@ -264,97 +120,22 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     // Enter passcode
     console.log(`Entering passcode for ${userName}...`);
     try {
-      // Wait a bit more for page to fully load after cookie popup
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Take screenshot before passcode attempt
-      try {
-        await page.screenshot({ path: `/tmp/${userName}_before_passcode.png` });
-        console.log(`Before passcode screenshot saved for ${userName}`);
-      } catch (screenshotError) {
-        console.log(`Screenshot failed for ${userName}: ${screenshotError.message}`);
-      }
-      
-      // List all inputs for debugging
-      const allInputs = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('input')).map(input => ({
-          type: input.type,
-          id: input.id,
-          name: input.name,
-          placeholder: input.placeholder,
-          className: input.className,
-          visible: input.offsetParent !== null
-        }));
-      });
-      console.log(`All inputs for ${userName}:`, allInputs);
-      
-      // Try multiple selectors for passcode input
-      const passcodeSelectors = [
-        '#input-for-pwd',
-        'input[type="password"]',
-        'input[placeholder*="passcode"]',
-        'input[placeholder*="password"]',
-        'input[name*="passcode"]',
-        'input[name*="password"]',
-        'input[aria-label*="passcode"]',
-        'input[aria-label*="password"]',
-        'input[id*="pwd"]',
-        'input[id*="pass"]'
-      ];
-      
-      let passcodeInput = null;
-      for (const selector of passcodeSelectors) {
-        try {
-          passcodeInput = await page.waitForSelector(selector, { timeout: 2000 });
-          if (passcodeInput) {
-            console.log(`Found passcode input for ${userName} using selector: ${selector}`);
-            break;
-          }
-        } catch (e) {
-          // Continue to next selector
-        }
-      }
-      
-      if (passcodeInput) {
-        await passcodeInput.type(passWord);
-        console.log(`Passcode entered for ${userName}`);
-      } else {
-        // Try page.evaluate as fallback
-        const entered = await page.evaluate((pwd) => {
-          const inputs = Array.from(document.querySelectorAll('input'));
-          const passcodeInput = inputs.find(input => 
-            input.type === 'password' ||
-            input.placeholder?.toLowerCase().includes('passcode') ||
-            input.placeholder?.toLowerCase().includes('password') ||
-            input.name?.toLowerCase().includes('passcode') ||
-            input.name?.toLowerCase().includes('password') ||
-            input.id?.toLowerCase().includes('pwd') ||
-            input.id?.toLowerCase().includes('pass')
-          );
-          if (passcodeInput) {
-            passcodeInput.value = pwd;
-            passcodeInput.dispatchEvent(new Event('input', { bubbles: true }));
-            return true;
-          }
-          return false;
-        }, passWord);
-        
-        if (entered) {
-          console.log(`Passcode entered via page.evaluate for ${userName}`);
-        } else {
-          throw new Error('No passcode input found');
-        }
-      }
+      await page.waitForSelector('#input-for-pwd', { timeout: 10000 });
+      await page.type('#input-for-pwd', passWord);
+      console.log(`Passcode entered for ${userName}`);
     } catch (error) {
-      console.log(`Error for ${userName}: Passcode input not found - ${error.message}`);
-      throw new Error(`Passcode input not found for ${userName}`);
+      console.log(`Passcode input not found for ${userName}, trying fallback...`);
+      try {
+        await page.type('input[type="password"]', passWord);
+        console.log(`Passcode entered via fallback for ${userName}`);
+      } catch (error2) {
+        console.log(`Error for ${userName}: Passcode input not found`);
+        throw new Error(`Passcode input not found for ${userName}`);
+      }
     }
     
     // Wait a moment
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Take screenshot before join
-    await page.screenshot({ path: `/tmp/${userName}_debug_before_join.png` });
     
     // Click Join button
     console.log(`Looking for join button for ${userName}...`);
@@ -395,10 +176,6 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     if (currentUrl.includes('app.zoom.us/wc/')) {
       console.log(`Successfully joined meeting for ${userName}`);
       
-      // Take final screenshot
-      await page.screenshot({ path: `/tmp/${userName}_final.png` });
-      console.log(`Final screenshot saved for ${userName}`);
-      
       // Add to active browsers/pages
       activeBrowsers.push(browser);
       activePages.push(page);
@@ -416,74 +193,53 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
   } catch (error) {
     console.log(`Error for ${userName}: ${error.message}`);
-    try {
-      if (page) {
-        await page.screenshot({ path: `/tmp/${userName}_error.png` });
-        console.log(`Error screenshot saved for ${userName}`);
-      }
-    } catch (screenshotError) {
-      console.log(`Error screenshot failed for ${userName}: ${screenshotError.message}`);
-    }
-    
-    // Close browser on error
-    if (browser) {
+    throw error;
+  } finally {
+    if (!activeBrowsers.includes(browser)) {
       try {
-        await browser.close();
+        if (page) await page.close();
+        if (browser) await browser.close();
         console.log(`Browser closed for ${userName} due to error`);
       } catch (closeError) {
-        console.log(`Could not close browser for ${userName}: ${closeError.message}`);
+        console.log(`Error closing browser for ${userName}: ${closeError.message}`);
       }
     }
-    
-    return {
-      success: false,
-      error: error.message,
-      userName: userName
-    };
   }
 }
 
 export async function closeAllBots() {
   if (isClosing) {
-    console.log('Already closing bots...');
-    return { message: 'Already closing bots...', closedCount: 0 };
+    return 0;
   }
   
   isClosing = true;
   console.log('Closing all bots...');
   
   try {
-    const closePromises = [];
-    
-    // Close all pages
-    for (const page of activePages) {
-      if (page && !page.isClosed()) {
-        closePromises.push(page.close().catch(err => console.log('Error closing page:', err.message)));
+    const closePromises = activeBrowsers.map(async (browser, index) => {
+      try {
+        await browser.close();
+        console.log(`Closed browser ${index + 1}`);
+        return true;
+      } catch (error) {
+        console.log(`Error closing browser ${index + 1}: ${error.message}`);
+        return false;
       }
-    }
+    });
     
-    // Close all browsers
-    for (const browser of activeBrowsers) {
-      if (browser && browser.process()) {
-        closePromises.push(browser.close().catch(err => console.log('Error closing browser:', err.message)));
-      }
-    }
+    const results = await Promise.allSettled(closePromises);
+    const closedCount = results.filter(result => result.status === 'fulfilled' && result.value).length;
     
-    // Wait for all to close
-    await Promise.allSettled(closePromises);
-    
-    // Clear arrays
     activeBrowsers = [];
     activePages = [];
-    
-    console.log('All bots closed successfully');
-    return { message: 'All bots closed successfully', closedCount: closePromises.length };
-    
-  } catch (error) {
-    console.log('Error closing bots:', error.message);
-    return { message: 'Error closing bots', error: error.message, closedCount: 0 };
-  } finally {
     isClosing = false;
+    
+    console.log(`Successfully closed ${closedCount} bots`);
+    return closedCount;
+  } catch (error) {
+    isClosing = false;
+    console.error('Error in closeAllBots:', error);
+    throw error;
   }
 }
 
@@ -491,48 +247,34 @@ export async function leaveAllMeetings() {
   console.log('Leaving all meetings...');
   
   try {
-    const leavePromises = [];
-    
-    // Close all pages (this will leave meetings)
-    for (const page of activePages) {
-      if (page && !page.isClosed()) {
-        leavePromises.push(page.close().catch(err => console.log('Error leaving meeting:', err.message)));
+    const leavePromises = activePages.map(async (page, index) => {
+      try {
+        await page.close();
+        console.log(`Left meeting ${index + 1}`);
+        return true;
+      } catch (error) {
+        console.log(`Error leaving meeting ${index + 1}: ${error.message}`);
+        return false;
       }
-    }
+    });
     
-    // Close all browsers
-    for (const browser of activeBrowsers) {
-      if (browser && browser.process()) {
-        leavePromises.push(browser.close().catch(err => console.log('Error closing browser:', err.message)));
-      }
-    }
+    const results = await Promise.allSettled(leavePromises);
+    const leftCount = results.filter(result => result.status === 'fulfilled' && result.value).length;
     
-    // Wait for all to close
-    await Promise.allSettled(leavePromises);
-    
-    // Clear arrays
-    activeBrowsers = [];
     activePages = [];
     
-    console.log('All meetings left successfully');
-    return { message: 'All meetings left successfully', leftCount: leavePromises.length };
-    
+    console.log(`Successfully left ${leftCount} meetings`);
+    return leftCount;
   } catch (error) {
-    console.log('Error leaving meetings:', error.message);
-    return { message: 'Error leaving meetings', error: error.message, leftCount: 0 };
+    console.error('Error in leaveAllMeetings:', error);
+    throw error;
   }
 }
 
 export function getBotStatus() {
-  const activeBots = activeBrowsers.length;
-  const botNames = activeBrowsers.map((browser, index) => {
-    // Generate a bot name based on index
-    const names = ['Bot_1', 'Bot_2', 'Bot_3', 'Bot_4', 'Bot_5', 'Bot_6', 'Bot_7', 'Bot_8', 'Bot_9', 'Bot_10'];
-    return names[index] || `Bot_${index + 1}`;
-  });
-  
   return {
-    activeBots: activeBots,
-    botNames: botNames
+    activeBots: activeBrowsers.length,
+    botNames: activePages.map(page => page.userName || 'Unknown'),
+    isClosing: isClosing
   };
 } 

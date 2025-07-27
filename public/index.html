@@ -104,43 +104,31 @@
             const passWord = document.getElementById('passcode').value;
             const botCount = parseInt(document.getElementById('botCount').value, 10) || 5;
             
-            function getRandomName() {
-                const names = [
-                    'Ali', 'Sara', 'Omar', 'Ayesha', 'Zain', 'Fatima', 'Usman', 'Hira', 'Bilal', 'Mina',
-                    'Hamza', 'Noor', 'Danish', 'Iqra', 'Saad', 'Sana', 'Raza', 'Mariam', 'Tariq', 'Laila'
-                ];
-                return names[Math.floor(Math.random() * names.length)] + '_' + Math.floor(Math.random() * 10000);
-            }
-
             console.log(`Starting ${botCount} bots to join meeting: ${meetingNumber}`);
 
-            for (let i = 0; i < botCount; i++) {
-                const userName = getRandomName();
-                console.log(`Joining meeting as: ${userName}`);
+            // Send single request with botCount
+            try {
+                const joinRes = await fetch('/join-meeting', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        meetingId: meetingNumber,
+                        passcode: passWord,
+                        botCount: botCount
+                    })
+                });
+                const joinResult = await joinRes.json();
+                console.log('Join result:', joinResult);
                 
-                // Use Puppeteer to join directly
-                try {
-                    const joinRes = await fetch('/join-meeting', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            meetingNumber: meetingNumber,
-                            passWord: passWord,
-                            userName: userName
-                        })
-                    });
-                    const joinResult = await joinRes.json();
-                    console.log('Join result for', userName, ':', joinResult);
-                } catch (err) {
-                    console.error('Join error for', userName, ':', err);
+                if (joinResult.results) {
+                    const successCount = joinResult.results.filter(r => r.success).length;
+                    alert(`Successfully joined ${successCount} out of ${botCount} bots!`);
                 }
-                
-                // Add delay between bot joins to avoid overwhelming the system
-                if (i < botCount - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                }
+            } catch (err) {
+                console.error('Join error:', err);
+                alert('Error joining bots: ' + err.message);
             }
         };
 

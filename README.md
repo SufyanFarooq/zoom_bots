@@ -1,168 +1,110 @@
-# 🤖 Zoom Bot Manager
+# Zoom Bots - Local Development
 
-A Node.js application that automates joining multiple bots to Zoom meetings using Puppeteer.
+A lightweight Node.js application for joining Zoom meetings with multiple bots using Puppeteer.
 
-## 🚀 Features
+## Features
 
-- **Multiple Bot Joining**: Join multiple bots to any Zoom meeting
-- **Automatic Form Filling**: Name and password automatically entered
-- **Permission Handling**: Camera/microphone permissions auto-allowed
-- **Bot Management**: Close all bots, leave meetings, check status
-- **Modern UI**: Beautiful interface with real-time status updates
+- ✅ Join multiple bots to Zoom meetings
+- ✅ Random bot names
+- ✅ Cookie popup handling
+- ✅ Local Chromium browser
+- ✅ Real-time bot status
+- ✅ Close all bots functionality
 
-## 📋 Prerequisites
+## Prerequisites
 
-- Node.js 18+ 
-- Zoom account with meeting access
-- Zoom SDK App credentials (for advanced features)
+- Node.js 18+
+- macOS (for local Chromium)
 
-## 🛠️ Installation
+## Installation
 
-1. **Clone the repository**
-```bash
-git clone <your-repo-url>
-cd zoom-bots
-```
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd zoom-bots
+   ```
 
-2. **Install dependencies**
-```bash
-npm install
-```
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-3. **Set up environment variables**
-```bash
-cp .env.example .env
-```
+3. **Install Chromium browser:**
+   ```bash
+   npx @puppeteer/browsers install chrome@stable
+   ```
 
-Edit `.env` file:
-```env
-PORT=3000
-ZOOM_SDK_KEY=your_sdk_key_here
-ZOOM_SDK_SECRET=your_sdk_secret_here
-NODE_ENV=development
-```
+## Usage
 
-4. **Start the application**
+### Start the server:
 ```bash
 npm start
 ```
 
-5. **Open in browser**
-```
-http://localhost:3000
-```
-
-## 🌐 Deployment
-
-### Heroku Deployment
-
-1. **Install Heroku CLI**
+### Development mode (with auto-restart):
 ```bash
-npm install -g heroku
+npm run dev
 ```
 
-2. **Login to Heroku**
+### Test Chromium installation:
 ```bash
-heroku login
+npm test
 ```
 
-3. **Create Heroku app**
+## API Endpoints
+
+### Join Meeting
 ```bash
-heroku create your-app-name
+curl -X POST http://localhost:3000/join-meeting \
+  -H "Content-Type: application/json" \
+  -d '{
+    "meetingId": "123456789",
+    "passcode": "password123",
+    "botCount": 3
+  }'
 ```
 
-4. **Set environment variables**
+### Debug Single Bot
 ```bash
-heroku config:set ZOOM_SDK_KEY=your_sdk_key
-heroku config:set ZOOM_SDK_SECRET=your_sdk_secret
-heroku config:set NODE_ENV=production
+curl -X POST http://localhost:3000/debug-join \
+  -H "Content-Type: application/json" \
+  -d '{
+    "meetingId": "123456789",
+    "passcode": "password123",
+    "botName": "TestBot"
+  }'
 ```
 
-5. **Deploy**
+### Check Bot Status
 ```bash
-git add .
-git commit -m "Deploy to Heroku"
-git push heroku main
+curl http://localhost:3000/bot-status
 ```
 
-6. **Open your app**
+### Close All Bots
 ```bash
-heroku open
+curl -X POST http://localhost:3000/close-all-bots
 ```
 
-### Railway Deployment
+### Leave All Meetings
+```bash
+curl -X POST http://localhost:3000/leave-all-meetings
+```
 
-1. **Connect your GitHub repository to Railway**
-2. **Set environment variables in Railway dashboard**
-3. **Deploy automatically**
+## Frontend
 
-### DigitalOcean App Platform
+Open `http://localhost:3000` in your browser to use the web interface.
 
-1. **Connect your GitHub repository**
-2. **Set environment variables**
-3. **Deploy with one click**
+## Troubleshooting
 
-## 📱 Usage
+### Chromium not found
+If you get "Browser not found" error:
+```bash
+npx @puppeteer/browsers install chrome@stable
+```
 
-1. **Enter Meeting Details**
-   - Meeting ID
-   - Passcode (if required)
-   - Number of bots
+### Permission issues
+Make sure to allow camera/microphone permissions when prompted.
 
-2. **Join Bots**
-   - Click "🚀 Join as Bots"
-   - Bots will automatically join the meeting
+## License
 
-3. **Manage Bots**
-   - Check status with "📊 Check Bot Status"
-   - Leave meetings with "🚪 Leave All Meetings"
-   - Close all bots with "❌ Close All Bots"
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `PORT` | Server port | No (default: 3000) |
-| `ZOOM_SDK_KEY` | Zoom SDK Key | Yes |
-| `ZOOM_SDK_SECRET` | Zoom SDK Secret | Yes |
-| `NODE_ENV` | Environment (development/production) | No |
-
-### Zoom SDK Setup
-
-1. Go to [Zoom Marketplace](https://marketplace.zoom.us/)
-2. Create a "Meeting SDK" app
-3. Get your SDK Key and SDK Secret
-4. Add them to your environment variables
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Puppeteer not working on server**
-   - Make sure you're using headless mode in production
-   - Add proper Chrome arguments for server environment
-
-2. **Permission denied errors**
-   - Check if your server has proper permissions
-   - Use `--no-sandbox` flag (already included)
-
-3. **Memory issues**
-   - Close browsers properly after use
-   - Monitor server memory usage
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## ⚠️ Disclaimer
-
-This tool is for educational purposes. Please ensure you comply with Zoom's Terms of Service and use responsibly. 
+MIT License 
