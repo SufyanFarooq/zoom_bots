@@ -44,7 +44,12 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         '--disable-images',
         '--mute-audio',
         '--disable-web-security',
-        '--disable-blink-features=AutomationControlled'
+        '--disable-blink-features=AutomationControlled',
+        '--disable-video-capture',
+        '--disable-video',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--no-default-browser-check'
       ]
     };
 
@@ -55,12 +60,25 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
 
     browser = await puppeteer.launch(launchOptions);
     console.log(`Browser launched for ${userName}`);
-    
+
     page = await browser.newPage();
     console.log(`Page created for ${userName}`);
-    
+
     // Set user agent
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+    // Handle permissions - deny video and audio
+    const context = browser.defaultBrowserContext();
+    await context.overridePermissions('https://zoom.us', []);
+    await context.overridePermissions('https://app.zoom.us', []);
+    
+    // Set permissions to deny video and audio
+    await page.evaluateOnNewDocument(() => {
+      // Override getUserMedia to deny video and audio
+      navigator.mediaDevices.getUserMedia = async () => {
+        throw new Error('Permission denied');
+      };
+    });
     
     // Navigate to Zoom join URL
     const zoomJoinUrl = `https://zoom.us/wc/join/${meetingNumber}`;
