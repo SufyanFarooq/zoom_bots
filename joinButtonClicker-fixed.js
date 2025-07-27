@@ -30,11 +30,10 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
   let page;
   try {
     console.log(`Starting Puppeteer for ${userName} to join meeting: ${meetingNumber}`);
-    
+
     // Launch options for local development
     const launchOptions = {
       headless: true, // Run in background for better performance
-      executablePath: './chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -48,13 +47,12 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
         '--disable-blink-features=AutomationControlled'
       ]
     };
-    
-    console.log(`Launch options:`, { 
-      headless: launchOptions.headless, 
-      executablePath: launchOptions.executablePath,
+
+    console.log(`Launch options:`, {
+      headless: launchOptions.headless,
       argsCount: launchOptions.args.length
     });
-    
+
     browser = await puppeteer.launch(launchOptions);
     console.log(`Browser launched for ${userName}`);
     

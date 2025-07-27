@@ -5,16 +5,17 @@ A lightweight Node.js application for joining Zoom meetings with multiple bots u
 ## Features
 
 - ✅ Join multiple bots to Zoom meetings
-- ✅ Random bot names
-- ✅ Cookie popup handling
+- ✅ Real user names (Ali_Khan_1234, Sara_Ahmed_5678, etc.)
+- ✅ Headless browser mode for better performance
 - ✅ Local Chromium browser
 - ✅ Real-time bot status
 - ✅ Close all bots functionality
+- ✅ Clean project structure
 
 ## Prerequisites
 
 - Node.js 18+
-- macOS (for local Chromium)
+- macOS/Linux/Windows
 
 ## Installation
 
@@ -29,9 +30,14 @@ A lightweight Node.js application for joining Zoom meetings with multiple bots u
    npm install
    ```
 
-3. **Install Chromium browser:**
+3. **Install Chromium browser (IMPORTANT!):**
    ```bash
    npx @puppeteer/browsers install chrome@stable
+   ```
+
+4. **Verify Chromium installation:**
+   ```bash
+   npx @puppeteer/browsers list
    ```
 
 ## Usage
@@ -44,11 +50,6 @@ npm start
 ### Development mode (with auto-restart):
 ```bash
 npm run dev
-```
-
-### Test Chromium installation:
-```bash
-npm test
 ```
 
 ## API Endpoints
@@ -94,6 +95,24 @@ curl -X POST http://localhost:3000/leave-all-meetings
 
 Open `http://localhost:3000` in your browser to use the web interface.
 
+## Setup for New Machines
+
+### Why Chrome folder is missing?
+The `chrome/` folder is not included in Git because it's too large (220MB+). Each machine needs to install Chromium separately.
+
+### Step-by-step setup:
+1. **Clone the repository**
+2. **Install Node.js dependencies:** `npm install`
+3. **Install Chromium browser:** `npx @puppeteer/browsers install chrome@stable`
+4. **Verify installation:** `npx @puppeteer/browsers list`
+5. **Start the server:** `npm start`
+
+### Chromium Installation Details:
+- **Command:** `npx @puppeteer/browsers install chrome@stable`
+- **Location:** `~/.cache/puppeteer/chrome/` (automatic)
+- **Size:** ~220MB
+- **Platform:** Auto-detects your OS (macOS/Linux/Windows)
+
 ## Troubleshooting
 
 ### Chromium not found
@@ -102,8 +121,36 @@ If you get "Browser not found" error:
 npx @puppeteer/browsers install chrome@stable
 ```
 
+### Check Chromium path
+```bash
+npx @puppeteer/browsers list
+```
+
 ### Permission issues
 Make sure to allow camera/microphone permissions when prompted.
+
+### Browser executable not found
+If the code can't find Chromium, update the path in `joinButtonClicker-fixed.js`:
+```javascript
+// Find your Chromium path
+npx @puppeteer/browsers list
+
+// Update the executablePath in joinButtonClicker-fixed.js
+executablePath: 'YOUR_CHROMIUM_PATH_HERE'
+```
+
+## Project Structure
+
+```
+zoom-bots/
+├── package.json              # Dependencies & scripts
+├── server.js                 # Express server
+├── joinButtonClicker-fixed.js # Bot logic
+├── public/index.html         # Frontend interface
+├── .gitignore               # Ignores chrome/ folder
+├── README.md                # This file
+└── chrome/                  # Chromium browser (created after installation)
+```
 
 ## License
 
