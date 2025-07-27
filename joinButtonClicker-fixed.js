@@ -33,7 +33,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     
     // Launch options for local development
     const launchOptions = {
-      headless: false, // Show browser for debugging
+      headless: true, // Run in background for better performance
       executablePath: './chrome/mac-138.0.7204.168/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
       args: [
         '--no-sandbox',
