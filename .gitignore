@@ -68,4 +68,7 @@ Thumbs.db
 
 # Temporary files
 tmp/
-temp/ 
+temp/
+
+# Chrome browser files (too large for GitHub)
+chrome/ 
