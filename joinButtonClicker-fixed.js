@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
 
 let activeBrowsers = [];
 let activePages = [];
@@ -34,6 +34,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     // Launch options for local development
     const launchOptions = {
       headless: true, // Run in background for better performance
+      executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
