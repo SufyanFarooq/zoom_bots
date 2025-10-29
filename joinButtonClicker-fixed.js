@@ -1,8 +1,39 @@
 import puppeteer from 'puppeteer-core';
+import fs from 'fs';
 
 let activeBrowsers = [];
 let activePages = [];
 let isClosing = false;
+
+function getChromeExecutablePath() {
+  const envPath = (process.env.CHROME_PATH || '').trim();
+  if (envPath) return envPath;
+
+  const candidates = [];
+  if (process.platform === 'darwin') {
+    candidates.push('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+    candidates.push('/Applications/Chromium.app/Contents/MacOS/Chromium');
+  } else if (process.platform === 'win32') {
+    candidates.push('C:/Program Files/Google/Chrome/Application/chrome.exe');
+    candidates.push('C:/Program Files (x86)/Google/Chrome/Application/chrome.exe');
+  } else {
+    // Linux
+    candidates.push('/usr/bin/google-chrome-stable');
+    candidates.push('/usr/bin/google-chrome');
+    candidates.push('/usr/bin/chromium');
+    candidates.push('/usr/bin/chromium-browser');
+    candidates.push('/snap/bin/chromium');
+    candidates.push('/opt/google/chrome/chrome');
+  }
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {}
+  }
+  // Fallback to a generic name; Puppeteer will likely fail with a clearer error if not installed
+  return process.platform === 'win32' ? 'chrome.exe' : 'google-chrome';
+}
 
 // Function to generate real user names
 function generateRealName() {
@@ -25,7 +56,7 @@ function generateRealName() {
   return `${firstName}_${lastName}_${randomNumber}`;
 }
 
-export async function joinZoomMeeting(meetingNumber, passWord, userName) {
+export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAliveMinutes = 0) {
   let browser;
   let page;
   try {
@@ -34,7 +65,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     // Launch options for local development
     const launchOptions = {
       headless: true, // Run in background for better performance
-      executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      executablePath: getChromeExecutablePath(),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -195,7 +226,25 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       
       // Add to active browsers/pages
       activeBrowsers.push(browser);
+      // attach for status reporting
+      try { page.userName = userName; } catch {}
       activePages.push(page);
+
+      // optional auto-leave after keepAliveMinutes
+      if (keepAliveMinutes && keepAliveMinutes > 0) {
+        const ms = keepAliveMinutes * 60 * 1000;
+        setTimeout(async () => {
+          try {
+            console.log(`⏰ ${userName} leaving meeting after ${keepAliveMinutes} minutes`);
+            try { await page.close(); } catch {}
+            try { await browser.close(); } catch {}
+          } finally {
+            // cleanup from active lists
+            activePages = activePages.filter(p => p !== page);
+            activeBrowsers = activeBrowsers.filter(b => b !== browser);
+          }
+        }, ms).unref?.();
+      }
       
       return {
         success: true,

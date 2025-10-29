@@ -43,39 +43,91 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', environment: 'local' });
 });
 
+// Helpers
+function parseZoomFromUrl(meetingUrl) {
+  try {
+    const url = new URL(meetingUrl);
+    // Example paths: /wc/join/123456789, /j/123456789
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    const maybeId = pathParts[pathParts.length - 1] || '';
+    const meetingId = (maybeId.match(/\d{6,}/) || [null])[0];
+    const passcode = url.searchParams.get('pwd') || url.searchParams.get('passcode') || '';
+    return { meetingId, passcode };
+  } catch (e) {
+    return { meetingId: null, passcode: '' };
+  }
+}
+
+async function runWithConcurrency(total, limit, runner) {
+  const results = new Array(total);
+  let nextIndex = 0;
+  const running = new Set();
+
+  async function launch() {
+    const index = nextIndex++;
+    const p = (async () => {
+      try {
+        results[index] = await runner(index);
+      } catch (err) {
+        results[index] = { success: false, error: err?.message || String(err) };
+      }
+    })();
+    running.add(p);
+    p.finally(() => running.delete(p));
+  }
+
+  const first = Math.min(limit, total);
+  for (let i = 0; i < first; i++) await launch();
+
+  while (nextIndex < total) {
+    await Promise.race(running);
+    await launch();
+  }
+
+  await Promise.allSettled(Array.from(running));
+  return results;
+}
+
 // Join meeting endpoint
 app.post('/join-meeting', async (req, res) => {
   try {
-    const { meetingId, passcode, botCount = 3 } = req.body;
-    
+    const {
+      meetingId: meetingIdRaw,
+      passcode: passcodeRaw,
+      meetingUrl,
+      botCount = 3,
+      maxConcurrent = 3,
+      keepAliveMinutes = 0,
+      namePrefix = ''
+    } = req.body || {};
+
+    let meetingId = meetingIdRaw || '';
+    let passcode = passcodeRaw || '';
+
+    if (meetingUrl && !meetingId) {
+      const parsed = parseZoomFromUrl(meetingUrl);
+      meetingId = parsed.meetingId || meetingId;
+      passcode = passcode || parsed.passcode || '';
+    }
+
     if (!meetingId || !passcode) {
-      return res.status(400).json({ error: 'meetingId and passcode required' });
+      return res.status(400).json({ error: 'Provide meetingUrl or meetingId plus passcode' });
     }
-    
-    console.log(`Starting ${botCount} bots to join meeting: ${meetingId}`);
-    
-    const results = [];
-    const botNames = [];
-    
-    for (let i = 0; i < botCount; i++) {
-      const botName = generateRealName();
-      botNames.push(botName);
-      
+
+    console.log(`Starting ${botCount} bots (concurrency ${maxConcurrent}) to join meeting: ${meetingId}`);
+
+    const names = Array.from({ length: Math.max(1, botCount) }, () => {
+      const generated = generateRealName();
+      return namePrefix ? `${namePrefix}_${generated}` : generated;
+    });
+
+    const results = await runWithConcurrency(botCount, Math.max(1, maxConcurrent), async (i) => {
+      const botName = names[i];
       console.log(`Joining bot ${i + 1}/${botCount}: ${botName}`);
-      
-      try {
-        const result = await joinZoomMeeting(meetingId, passcode, botName);
-        results.push(result);
-      } catch (error) {
-        console.log(`Error for ${botName}: ${error.message}`);
-        results.push({
-          success: false,
-          error: error.message,
-          userName: botName
-        });
-      }
-    }
-    
+      const result = await joinZoomMeeting(meetingId, passcode, botName, keepAliveMinutes);
+      return result;
+    });
+
     res.json({ results });
   } catch (error) {
     console.error('Join meeting error:', error);
