@@ -54,7 +54,7 @@ function launchBot(botName) {
   const env = {
     ...process.env,
     KEEP_ALIVE_MINUTES: config.keepAliveMinutes.toString(),
-    CHROME_PATH: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+    ...(process.env.CHROME_PATH ? { CHROME_PATH: process.env.CHROME_PATH } : {})
   };
 
   const botProcess = spawn('node', ['botWrapper.js', botName, config.meetingURL, config.passcode], {

@@ -1,22 +1,38 @@
 import puppeteer from 'puppeteer-core';
+import fs from 'fs';
 
 let activeBrowsers = [];
 let activePages = [];
 let isClosing = false;
 
 function getChromeExecutablePath() {
-  if (process.env.CHROME_PATH && process.env.CHROME_PATH.trim()) {
-    return process.env.CHROME_PATH.trim();
+  const envPath = (process.env.CHROME_PATH || '').trim();
+  if (envPath) return envPath;
+
+  const candidates = [];
+  if (process.platform === 'darwin') {
+    candidates.push('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+    candidates.push('/Applications/Chromium.app/Contents/MacOS/Chromium');
+  } else if (process.platform === 'win32') {
+    candidates.push('C:/Program Files/Google/Chrome/Application/chrome.exe');
+    candidates.push('C:/Program Files (x86)/Google/Chrome/Application/chrome.exe');
+  } else {
+    // Linux
+    candidates.push('/usr/bin/google-chrome-stable');
+    candidates.push('/usr/bin/google-chrome');
+    candidates.push('/usr/bin/chromium');
+    candidates.push('/usr/bin/chromium-browser');
+    candidates.push('/snap/bin/chromium');
+    candidates.push('/opt/google/chrome/chrome');
   }
-  const platform = process.platform;
-  if (platform === 'darwin') {
-    return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {}
   }
-  if (platform === 'win32') {
-    return 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-  }
-  // linux default
-  return '/usr/bin/google-chrome';
+  // Fallback to a generic name; Puppeteer will likely fail with a clearer error if not installed
+  return process.platform === 'win32' ? 'chrome.exe' : 'google-chrome';
 }
 
 // Function to generate real user names
