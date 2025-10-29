@@ -118,7 +118,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
     // Navigate to Zoom join URL
     const hasPass = (passWord || '').trim().length > 0;
     const zoomJoinUrl = hasPass
-      ? `https://app.zoom.us/wc/${meetingNumber}/join?pwd=${encodeURIComponent(passWord)}&fromPWA=1`
+      ? `https://app.zoom.us/wc/${meetingNumber}/join?pwd=${encodeURIComponent(passWord)}&fromPWA=1&uname=${encodeURIComponent(userName)}`
       : `https://zoom.us/wc/join/${meetingNumber}`;
     console.log(`Navigating to: ${zoomJoinUrl}`);
 
@@ -155,22 +155,58 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
       console.log(`No cookie popup found for ${userName}`);
     }
     
-    // Enter bot name
+    // Enter bot name (cross-frame, non-fatal if not present yet)
     console.log(`Entering name for ${userName}...`);
-    try {
-      await page.waitForSelector('input[type="text"]', { timeout: 10000 });
-      await page.type('input[type="text"]', userName);
-      console.log(`Name entered for ${userName}`);
-    } catch (error) {
-      console.log(`Name input not found for ${userName}, trying alternative selectors...`);
-      try {
-        await page.type('input[placeholder*="name"], input[name*="name"]', userName);
-        console.log(`Name entered via alternative selector for ${userName}`);
-      } catch (error2) {
-        console.log(`Error for ${userName}: Name input not found`);
-        throw new Error(`Name input not found for ${userName}`);
+    async function tryTypeNameAcrossFrames(timeoutMs = 8000) {
+      const selectors = [
+        '#inputname',
+        'input#inputname',
+        'input[name="uname"]',
+        'input[name="name"]',
+        'input[placeholder*="name" i]',
+        'input[type="text"]'
+      ];
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        // Main frame first
+        for (const sel of selectors) {
+          try {
+            const handle = await page.$(sel);
+            if (handle) {
+              await handle.click({ delay: 50 }).catch(() => {});
+              try { await page.keyboard.down('Control'); await page.keyboard.press('KeyA'); await page.keyboard.up('Control'); } catch {}
+              await handle.type(String(userName));
+              return true;
+            }
+          } catch {}
+        }
+        // Child frames
+        for (const frame of page.frames()) {
+          for (const sel of selectors) {
+            try {
+              const handle = await frame.$(sel);
+              if (handle) {
+                try { await handle.click({ delay: 50 }); } catch {}
+                try { await frame.focus(sel); } catch {}
+                try { await frame.type(sel, String(userName)); return true; } catch {}
+                try { await handle.type(String(userName)); return true; } catch {}
+              }
+            } catch {}
+          }
+        }
+        await new Promise(r => setTimeout(r, 250));
       }
+      return false;
     }
+    let nameTypedInitially = false;
+    try {
+      nameTypedInitially = await tryTypeNameAcrossFrames(5000);
+      if (nameTypedInitially) {
+        console.log(`Name entered for ${userName}`);
+      } else {
+        console.log(`Name input not visible yet for ${userName}; will try after clicking Join if needed`);
+      }
+    } catch {}
     
     // Helper to type passcode across main frame and iframes
     async function tryTypePasscodeAcrossFrames(timeoutMs = 8000) {
@@ -287,6 +323,19 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
         const secondJoin = await clickJoinAcrossFrames();
         if (secondJoin) {
           console.log(`Join/Submit clicked after entering passcode for ${userName}`);
+        }
+      }
+    }
+
+    // If name wasn't typed earlier, try now as well (some flows prompt name after Join)
+    if (!nameTypedInitially) {
+      const typedNameAfterJoin = await tryTypeNameAcrossFrames(10000);
+      if (typedNameAfterJoin) {
+        console.log(`Name entered after Join click for ${userName}`);
+        await new Promise(r => setTimeout(r, 400));
+        const thirdJoin = await clickJoinAcrossFrames();
+        if (thirdJoin) {
+          console.log(`Join/Submit clicked after entering name for ${userName}`);
         }
       }
     }
