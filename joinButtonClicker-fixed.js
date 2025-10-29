@@ -165,63 +165,130 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
       }
     }
     
-    // Enter passcode
-    console.log(`Entering passcode for ${userName}...`);
-    try {
-      await page.waitForSelector('#input-for-pwd', { timeout: 10000 });
-      await page.type('#input-for-pwd', passWord);
-      console.log(`Passcode entered for ${userName}`);
-    } catch (error) {
-      console.log(`Passcode input not found for ${userName}, trying fallback...`);
-      try {
-        await page.type('input[type="password"]', passWord);
-        console.log(`Passcode entered via fallback for ${userName}`);
-      } catch (error2) {
-        console.log(`Error for ${userName}: Passcode input not found`);
-        throw new Error(`Passcode input not found for ${userName}`);
+    // Helper to type passcode across main frame and iframes
+    async function tryTypePasscodeAcrossFrames(timeoutMs = 8000) {
+      const selectors = [
+        '#input-for-pwd',
+        'input[name="passcode"]',
+        'input[name="pwd"]',
+        'input[placeholder*="passcode" i]',
+        'input[aria-label*="passcode" i]',
+        'input[type="password"]',
+        'input[type="text"][name*="pass"]'
+      ];
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        // Main frame first
+        for (const sel of selectors) {
+          try {
+            const handle = await page.$(sel);
+            if (handle) {
+              await handle.type(String(passWord));
+              return true;
+            }
+          } catch {}
+        }
+        // All frames
+        for (const frame of page.frames()) {
+          for (const sel of selectors) {
+            try {
+              const handle = await frame.$(sel);
+              if (handle) {
+                await handle.type(String(passWord));
+                return true;
+              }
+            } catch {}
+          }
+        }
+        await new Promise(r => setTimeout(r, 300));
       }
+      return false;
     }
+
+    // Try to enter passcode if it's visible pre-join; otherwise continue and retry later
+    let passcodeTypedInitially = false;
+    try {
+      console.log(`Checking for passcode field (pre-join) for ${userName}...`);
+      passcodeTypedInitially = await tryTypePasscodeAcrossFrames(3000);
+      if (passcodeTypedInitially) {
+        console.log(`Passcode entered (pre-join) for ${userName}`);
+      } else {
+        console.log(`Passcode field not visible yet for ${userName}; will try after clicking Join`);
+      }
+    } catch {}
     
     // Wait a moment
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Click Join button
+    // Click Join button (search across all frames)
     console.log(`Looking for join button for ${userName}...`);
-    try {
-      await page.click('button[class*="join"]');
-      console.log(`Join button clicked for ${userName}`);
-    } catch (error) {
-      console.log(`Direct click failed for ${userName}, trying page.evaluate...`);
+    async function clickJoinAcrossFrames() {
+      try { await page.click('button[class*="join"]'); return true; } catch {}
+      try { await page.click('button[type="submit"]'); return true; } catch {}
+      // Main frame scan
       try {
-        await page.evaluate(() => {
-          const buttons = Array.from(document.querySelectorAll('button'));
-          const joinButton = buttons.find(btn => 
-            btn.textContent.toLowerCase().includes('join') ||
-            btn.className.toLowerCase().includes('join') ||
-            btn.className.toLowerCase().includes('submit')
-          );
-          if (joinButton) {
-            joinButton.click();
-            return true;
-          }
+        const clicked = await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+          const candidate = buttons.find(btn => {
+            const text = (btn.textContent || '').toLowerCase();
+            const cls = (btn.className || '').toLowerCase();
+            const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+            return text.includes('join') || cls.includes('join') || cls.includes('submit') || aria.includes('join');
+          });
+          if (candidate) { candidate.click(); return true; }
           return false;
         });
-        console.log(`Join button clicked via page.evaluate for ${userName}`);
-      } catch (error2) {
-        console.log(`Error for ${userName}: Join button not found`);
-        throw new Error(`Join button not found for ${userName}`);
+        if (clicked) return true;
+      } catch {}
+      // Child frames scan
+      for (const frame of page.frames()) {
+        try {
+          const clicked = await frame.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+            const candidate = buttons.find(btn => {
+              const text = (btn.textContent || '').toLowerCase();
+              const cls = (btn.className || '').toLowerCase();
+              const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+              return text.includes('join') || cls.includes('join') || cls.includes('submit') || aria.includes('join');
+            });
+            if (candidate) { candidate.click(); return true; }
+            return false;
+          });
+          if (clicked) return true;
+        } catch {}
       }
+      return false;
+    }
+    const joinClicked = await clickJoinAcrossFrames();
+    if (joinClicked) {
+      console.log(`Join button clicked for ${userName}`);
+    } else {
+      console.log(`Error for ${userName}: Join button not found`);
+      throw new Error(`Join button not found for ${userName}`);
     }
     
     // Wait for navigation
     console.log(`Waiting for meeting to load for ${userName}...`);
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // If we didn't type passcode earlier, try now (common Zoom flow)
+    if (!passcodeTypedInitially) {
+      const typedAfterJoin = await tryTypePasscodeAcrossFrames(12000);
+      if (typedAfterJoin) {
+        console.log(`Passcode entered after Join click for ${userName}`);
+        await new Promise(r => setTimeout(r, 500));
+        const secondJoin = await clickJoinAcrossFrames();
+        if (secondJoin) {
+          console.log(`Join/Submit clicked after entering passcode for ${userName}`);
+        }
+      }
+    }
     
     // Check current URL
     const currentUrl = page.url();
     console.log(`Current URL for ${userName}: ${currentUrl}`);
     
-    if (currentUrl.includes('app.zoom.us/wc/')) {
+    if (currentUrl.includes('app.zoom.us/wc/') || currentUrl.includes('zoom.us/wc/')) {
       console.log(`Successfully joined meeting for ${userName}`);
       
       // Add to active browsers/pages
@@ -253,6 +320,34 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
         url: currentUrl
       };
     } else {
+      // One more wait in case the client is still loading
+      await new Promise(r => setTimeout(r, 4000));
+      const retryUrl = page.url();
+      if (retryUrl.includes('app.zoom.us/wc/') || retryUrl.includes('zoom.us/wc/')) {
+        console.log(`Successfully joined meeting on retry for ${userName}`);
+        activeBrowsers.push(browser);
+        try { page.userName = userName; } catch {}
+        activePages.push(page);
+        if (keepAliveMinutes && keepAliveMinutes > 0) {
+          const ms = keepAliveMinutes * 60 * 1000;
+          setTimeout(async () => {
+            try {
+              console.log(`⏰ ${userName} leaving meeting after ${keepAliveMinutes} minutes`);
+              try { await page.close(); } catch {}
+              try { await browser.close(); } catch {}
+            } finally {
+              activePages = activePages.filter(p => p !== page);
+              activeBrowsers = activeBrowsers.filter(b => b !== browser);
+            }
+          }, ms).unref?.();
+        }
+        return {
+          success: true,
+          message: `${userName} successfully joined meeting`,
+          userName: userName,
+          url: retryUrl
+        };
+      }
       console.log(`Meeting interface check failed for ${userName}: Still on join page`);
       throw new Error(`Meeting interface check failed for ${userName}`);
     }
