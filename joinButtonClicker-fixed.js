@@ -81,7 +81,8 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
         '--disable-video',
         '--disable-dev-shm-usage',
         '--no-first-run',
-        '--no-default-browser-check'
+        '--no-default-browser-check',
+        '--lang=en-US'
       ]
     };
 
@@ -115,9 +116,13 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
     });
     
     // Navigate to Zoom join URL
-    const zoomJoinUrl = `https://zoom.us/wc/join/${meetingNumber}`;
+    const hasPass = (passWord || '').trim().length > 0;
+    const zoomJoinUrl = hasPass
+      ? `https://app.zoom.us/wc/${meetingNumber}/join?pwd=${encodeURIComponent(passWord)}&fromPWA=1`
+      : `https://zoom.us/wc/join/${meetingNumber}`;
     console.log(`Navigating to: ${zoomJoinUrl}`);
-    
+
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
     await page.goto(zoomJoinUrl, { waitUntil: 'networkidle2', timeout: 60000 });
     console.log(`Page loaded for ${userName}, waiting for form...`);
     
