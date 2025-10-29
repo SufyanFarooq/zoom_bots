@@ -308,37 +308,59 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
 
     // Validate actual in-meeting UI, not just URL
     const validationStart = Date.now();
-    let isInMeeting = false;
-    let lastInMeetingSnapshot = null;
-    while (Date.now() - validationStart < 20000 && !isInMeeting) {
-      const inMeeting = await page.evaluate(() => {
-        const meetingControls = document.querySelectorAll('[data-testid], [aria-label*="mute" i], [aria-label*="video" i], [aria-label*="participant" i]');
-        const participantIndicators = document.querySelectorAll('[aria-label*="participant" i], [class*="participant" i], [data-testid*="participant" i]');
-        const meetingInterface = document.querySelectorAll('[class*="meeting" i], [class*="conference" i], [id*="meeting" i]');
-        const waitingForHost = document.body.innerText.toLowerCase().includes('please wait for the host to start this meeting');
-        const joinFromBrowser = Array.from(document.querySelectorAll('a, button')).some(el => (el.textContent||'').toLowerCase().includes('join from your browser'));
+    let validationOutcome = { state: 'unknown', details: {} };
+    while (Date.now() - validationStart < 25000 && validationOutcome.state === 'unknown') {
+      const state = await page.evaluate(() => {
+        const bodyText = document.body.innerText.toLowerCase();
+        const queryAll = (sel) => Array.from(document.querySelectorAll(sel));
+
+        // Indicators of true in-meeting UI (Zoom web client containers and leave button)
+        const wcContainers = queryAll('[id^="wc-container"], #wc-container-right, #wc-container-left');
+        const leaveButtons = queryAll('[aria-label*="leave" i], button[class*="leave" i], button[id*="leave" i]');
+        const controls = queryAll('[aria-label*="mute" i], [aria-label*="video" i], [aria-label*="participants" i], [data-testid*="participant" i]');
+
+        // Blocking states
+        const waitingRoom = bodyText.includes('waiting room') || bodyText.includes('host will let you in') || bodyText.includes('will let you in soon') || bodyText.includes('we\'ve notified the host');
+        const hostNotStarted = bodyText.includes('waiting for the host to start this meeting') || bodyText.includes('host has not started the meeting');
+        const authRequired = bodyText.includes('sign in to join') || bodyText.includes('this meeting is for authorized attendees only') || bodyText.includes('this meeting requires authentication');
+        const recaptcha = document.querySelector('iframe[src*="recaptcha"], #g-recaptcha, .g-recaptcha') !== null || bodyText.includes('recaptcha');
+        const passcodeIncorrect = bodyText.includes('incorrect passcode') || bodyText.includes('wrong passcode');
+
+        // Join page indicators
+        const joinInputs = queryAll('#input-for-pwd, input[name="pwd"], input[name*="name" i]');
+
+        const inMeeting = (wcContainers.length > 0 && (controls.length > 0 || leaveButtons.length > 0)) && !waitingRoom && !hostNotStarted && !authRequired;
+
+        let state = 'unknown';
+        if (inMeeting) state = 'in_meeting';
+        else if (waitingRoom) state = 'waiting_room';
+        else if (hostNotStarted) state = 'host_not_started';
+        else if (authRequired) state = 'auth_required';
+        else if (recaptcha) state = 'recaptcha_required';
+        else if (passcodeIncorrect) state = 'incorrect_passcode';
+        else if (joinInputs.length > 0) state = 'on_join_screen';
+
         return {
-          controls: meetingControls.length,
-          participants: participantIndicators.length,
-          interface: meetingInterface.length,
-          waitingForHost,
-          joinFromBrowser,
+          state,
           url: window.location.href,
-          title: document.title
+          title: document.title,
+          wcContainers: wcContainers.length,
+          leaveButtons: leaveButtons.length,
+          controls: controls.length
         };
       });
-      lastInMeetingSnapshot = inMeeting;
-      if (!inMeeting.waitingForHost && (inMeeting.controls > 0 || inMeeting.interface > 0)) {
-        isInMeeting = true;
-        break;
+
+      validationOutcome = state;
+      if (validationOutcome.state === 'unknown' || validationOutcome.state === 'on_join_screen') {
+        await new Promise(r => setTimeout(r, 1200));
       }
-      await new Promise(r => setTimeout(r, 1000));
     }
 
     const finalUrl = page.url();
     console.log(`Validation URL for ${userName}: ${finalUrl}`);
+    console.log(`Validation outcome for ${userName}:`, validationOutcome);
 
-    if (isInMeeting) {
+    if (validationOutcome.state === 'in_meeting') {
       console.log(`Successfully validated in-meeting UI for ${userName}`);
       activeBrowsers.push(browser);
       try { page.userName = userName; } catch {}
@@ -364,7 +386,13 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
       };
     }
 
-    // If we got here, we didn't see in-meeting UI; fail with context
+    // For non-in-meeting states, surface a descriptive error to the caller
+    if (validationOutcome.state === 'waiting_room') throw new Error('Waiting room - host must admit');
+    if (validationOutcome.state === 'host_not_started') throw new Error('Host has not started the meeting');
+    if (validationOutcome.state === 'auth_required') throw new Error('Authentication required - cannot auto-join');
+    if (validationOutcome.state === 'recaptcha_required') throw new Error('reCAPTCHA required - cannot auto-join');
+    if (validationOutcome.state === 'incorrect_passcode') throw new Error('Incorrect passcode');
+
     console.log(`Meeting validation failed for ${userName}. URL: ${finalUrl}`);
     throw new Error(`Meeting interface check failed for ${userName}`);
     
