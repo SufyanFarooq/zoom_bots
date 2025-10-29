@@ -4,12 +4,13 @@ FROM node:20-bullseye-slim
 # Prevent Puppeteer from downloading Chromium since we use system Chromium
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     NODE_ENV=production \
-    CHROME_PATH=/usr/bin/chromium
+    CHROME_PATH=/usr/bin/google-chrome-stable
 
-# Install system dependencies and Chromium
+# Install system dependencies and Google Chrome Stable (more compatible with Zoom)
 RUN apt-get update && apt-get install -y \
-    chromium \
     ca-certificates \
+    curl \
+    gnupg \
     fonts-liberation \
     fonts-noto-color-emoji \
     libasound2 \
@@ -43,7 +44,12 @@ RUN apt-get update && apt-get install -y \
     libxss1 \
     libxtst6 \
     xdg-utils \
- && rm -rf /var/lib/apt/lists/*
+&& install -d -m 0755 /etc/apt/keyrings \
+&& curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg \
+&& echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+&& apt-get update \
+&& apt-get install -y google-chrome-stable \
+&& rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /app

@@ -169,78 +169,117 @@ async function joinZoomMeeting() {
       }
     }
     
-    // Random delay before entering passcode
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-    
-    // Enter passcode
-    console.log(`Entering passcode for ${botName}...`);
-    try {
-      await page.waitForSelector('#input-for-pwd', { timeout: 30000 });
-      await page.type('#input-for-pwd', passcode, { delay: 100 + Math.random() * 200 });
-      console.log(`Passcode entered for ${botName}`);
-    } catch (error) {
-      console.log(`Passcode input not found for ${botName}, trying fallback...`);
-      try {
-        await page.type('input[type="password"]', passcode, { delay: 100 + Math.random() * 200 });
-        console.log(`Passcode entered via fallback for ${botName}`);
-      } catch (error2) {
-        console.log(`Error for ${botName}: Passcode input not found`);
-        throw new Error(`Passcode input not found for ${botName}`);
+    // Helper to type passcode across main frame and iframes
+    async function tryTypePasscodeAcrossFrames(timeoutMs = 8000) {
+      const selectors = [
+        '#input-for-pwd',
+        'input[name="passcode"]',
+        'input[name="pwd"]',
+        'input[placeholder*="passcode" i]',
+        'input[aria-label*="passcode" i]',
+        'input[type="password"]',
+        'input[type="text"][name*="pass"]'
+      ];
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        // Main frame first
+        for (const sel of selectors) {
+          try {
+            const handle = await page.$(sel);
+            if (handle) {
+              await handle.type(String(passcode), { delay: 80 + Math.random() * 120 });
+              return true;
+            }
+          } catch {}
+        }
+        // Child frames
+        for (const frame of page.frames()) {
+          for (const sel of selectors) {
+            try {
+              const handle = await frame.$(sel);
+              if (handle) {
+                await handle.type(String(passcode), { delay: 80 + Math.random() * 120 });
+                return true;
+              }
+            } catch {}
+          }
+        }
+        await new Promise(r => setTimeout(r, 300));
       }
+      return false;
     }
+
+    // Try to enter passcode if visible pre-join; otherwise continue and retry later
+    let passcodeTypedInitially = false;
+    try {
+      console.log(`Checking for passcode field (pre-join) for ${botName}...`);
+      passcodeTypedInitially = await tryTypePasscodeAcrossFrames(3000);
+      if (passcodeTypedInitially) {
+        console.log(`Passcode entered (pre-join) for ${botName}`);
+      } else {
+        console.log(`Passcode field not visible yet for ${botName}; will try after clicking Join`);
+      }
+    } catch {}
     
     // Random delay before clicking join
     await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
     
-    // Click Join button
+    // Click Join button across frames
     console.log(`Looking for join button for ${botName}...`);
-    try {
-      const clickResult = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button'));
-        console.log('Found buttons:', buttons.map(b => b.textContent));
-        const joinButton = buttons.find(btn => 
-          btn.textContent.toLowerCase().includes('join') ||
-          btn.className.toLowerCase().includes('join') ||
-          btn.className.toLowerCase().includes('submit')
-        );
-        if (joinButton) {
-          joinButton.click();
-          return true;
-        }
-        return false;
-      });
-      if (clickResult) {
-        console.log(`Join button clicked via page.evaluate for ${botName}`);
-      } else {
-        console.log(`No join button found for ${botName}`);
-        throw new Error(`Join button not found for ${botName}`);
-      }
-    } catch (error) {
-      console.log(`Direct click failed for ${botName}, trying page.evaluate...`);
+    async function clickJoinAcrossFrames() {
+      try { await page.click('button[class*="join"]'); return true; } catch {}
+      try { await page.click('button[type="submit"]'); return true; } catch {}
       try {
-        const clickResult = await page.evaluate(() => {
-          const buttons = Array.from(document.querySelectorAll('button'));
-          console.log('Found buttons:', buttons.map(b => b.textContent));
-          const joinButton = buttons.find(btn => 
-            btn.textContent.toLowerCase().includes('join') ||
-            btn.className.toLowerCase().includes('join') ||
-            btn.className.toLowerCase().includes('submit')
-          );
-          if (joinButton) {
-            joinButton.click();
-            return true;
-          }
+        const clicked = await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+          const candidate = buttons.find(btn => {
+            const text = (btn.textContent || '').toLowerCase();
+            const cls = (btn.className || '').toLowerCase();
+            const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+            return text.includes('join') || cls.includes('join') || cls.includes('submit') || aria.includes('join');
+          });
+          if (candidate) { candidate.click(); return true; }
           return false;
         });
-        if (clickResult) {
-          console.log(`Join button clicked via page.evaluate for ${botName}`);
-        } else {
-          console.log(`No join button found for ${botName}`);
-          throw new Error(`Join button not found for ${botName}`);
+        if (clicked) return true;
+      } catch {}
+      for (const frame of page.frames()) {
+        try {
+          const clicked = await frame.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+            const candidate = buttons.find(btn => {
+              const text = (btn.textContent || '').toLowerCase();
+              const cls = (btn.className || '').toLowerCase();
+              const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+              return text.includes('join') || cls.includes('join') || cls.includes('submit') || aria.includes('join');
+            });
+            if (candidate) { candidate.click(); return true; }
+            return false;
+          });
+          if (clicked) return true;
+        } catch {}
+      }
+      return false;
+    }
+    const joinClicked = await clickJoinAcrossFrames();
+    if (joinClicked) {
+      console.log(`Join button clicked for ${botName}`);
+    } else {
+      console.log(`Error for ${botName}: Join button not found`);
+      throw new Error(`Join button not found for ${botName}`);
+    }
+
+    // Short wait, then if passcode wasn't typed pre-join, try now
+    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1500));
+    if (!passcodeTypedInitially) {
+      const typedAfterJoin = await tryTypePasscodeAcrossFrames(12000);
+      if (typedAfterJoin) {
+        console.log(`Passcode entered after Join click for ${botName}`);
+        await new Promise(r => setTimeout(r, 500));
+        const secondJoin = await clickJoinAcrossFrames();
+        if (secondJoin) {
+          console.log(`Join/Submit clicked after entering passcode for ${botName}`);
         }
-      } catch (error2) {
-        console.log(`Error for ${botName}: Join button not found`);
-        throw new Error(`Join button not found for ${botName}`);
       }
     }
     
