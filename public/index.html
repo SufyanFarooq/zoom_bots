@@ -80,9 +80,27 @@
         <h1>🤖 Zoom Bot Manager</h1>
         
         <form id="join-form">
-            <label>Meeting ID: <input type="text" id="meetingId" required></label><br><br>
-            <label>Passcode: <input type="text" id="passcode" required></label><br><br>
-            <label>Number of Bots: <input type="number" id="botCount" value="5" min="1" max="10"></label><br><br>
+            <label>Meeting Link (optional):
+                <input type="text" id="meetingUrl" placeholder="https://zoom.us/wc/join/123456789?pwd=...">
+            </label><br><br>
+            <label>Meeting ID:
+                <input type="text" id="meetingId" placeholder="123456789">
+            </label><br><br>
+            <label>Passcode:
+                <input type="text" id="passcode" placeholder="Only needed if not in link">
+            </label><br><br>
+            <label>Number of Bots:
+                <input type="number" id="botCount" value="5" min="1" max="50">
+            </label><br><br>
+            <label>Max Concurrent:
+                <input type="number" id="maxConcurrent" value="3" min="1" max="20">
+            </label><br><br>
+            <label>Keep Alive (minutes):
+                <input type="number" id="keepAlive" value="0" min="0" max="180">
+            </label><br><br>
+            <label>Name Prefix (optional):
+                <input type="text" id="namePrefix" placeholder="e.g., ClassA">
+            </label><br><br>
             <button id="joinBtn" type="submit">🚀 Join as Bots</button>
         </form>
 
@@ -100,11 +118,15 @@
     <script>
         document.getElementById('join-form').onsubmit = async function(e) {
             e.preventDefault();
-            const meetingNumber = document.getElementById('meetingId').value;
-            const passWord = document.getElementById('passcode').value;
+            const meetingUrl = (document.getElementById('meetingUrl').value || '').trim();
+            const meetingNumber = (document.getElementById('meetingId').value || '').trim();
+            const passWord = (document.getElementById('passcode').value || '').trim();
             const botCount = parseInt(document.getElementById('botCount').value, 10) || 5;
+            const maxConcurrent = parseInt(document.getElementById('maxConcurrent').value, 10) || 3;
+            const keepAliveMinutes = parseInt(document.getElementById('keepAlive').value, 10) || 0;
+            const namePrefix = (document.getElementById('namePrefix').value || '').trim();
             
-            console.log(`Starting ${botCount} bots to join meeting: ${meetingNumber}`);
+            console.log(`Starting ${botCount} bots to join meeting: ${meetingUrl || meetingNumber}`);
 
             // Send single request with botCount
             try {
@@ -114,9 +136,13 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        meetingId: meetingNumber,
+                        meetingUrl: meetingUrl || undefined,
+                        meetingId: meetingUrl ? undefined : meetingNumber,
                         passcode: passWord,
-                        botCount: botCount
+                        botCount: botCount,
+                        maxConcurrent: maxConcurrent,
+                        keepAliveMinutes: keepAliveMinutes,
+                        namePrefix: namePrefix
                     })
                 });
                 const joinResult = await joinRes.json();

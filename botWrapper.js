@@ -1,5 +1,19 @@
 import puppeteer from 'puppeteer-core';
 
+function getChromeExecutablePath() {
+  if (process.env.CHROME_PATH && process.env.CHROME_PATH.trim()) {
+    return process.env.CHROME_PATH.trim();
+  }
+  const platform = process.platform;
+  if (platform === 'darwin') {
+    return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  }
+  if (platform === 'win32') {
+    return 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+  }
+  return '/usr/bin/google-chrome';
+}
+
 // Configuration
 const botName = process.argv[2];
 const meetingId = process.argv[3].split('/').pop(); // Extract meeting ID from URL
@@ -15,7 +29,7 @@ async function joinZoomMeeting() {
     // Launch browser with detached mode
     const launchOptions = {
       headless: true, // Keep visible for debugging
-      executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      executablePath: getChromeExecutablePath(),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',

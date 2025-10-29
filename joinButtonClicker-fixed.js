@@ -4,6 +4,21 @@ let activeBrowsers = [];
 let activePages = [];
 let isClosing = false;
 
+function getChromeExecutablePath() {
+  if (process.env.CHROME_PATH && process.env.CHROME_PATH.trim()) {
+    return process.env.CHROME_PATH.trim();
+  }
+  const platform = process.platform;
+  if (platform === 'darwin') {
+    return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  }
+  if (platform === 'win32') {
+    return 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+  }
+  // linux default
+  return '/usr/bin/google-chrome';
+}
+
 // Function to generate real user names
 function generateRealName() {
   const firstNames = [
@@ -25,7 +40,7 @@ function generateRealName() {
   return `${firstName}_${lastName}_${randomNumber}`;
 }
 
-export async function joinZoomMeeting(meetingNumber, passWord, userName) {
+export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAliveMinutes = 0) {
   let browser;
   let page;
   try {
@@ -34,7 +49,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
     // Launch options for local development
     const launchOptions = {
       headless: true, // Run in background for better performance
-      executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      executablePath: getChromeExecutablePath(),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -195,7 +210,25 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName) {
       
       // Add to active browsers/pages
       activeBrowsers.push(browser);
+      // attach for status reporting
+      try { page.userName = userName; } catch {}
       activePages.push(page);
+
+      // optional auto-leave after keepAliveMinutes
+      if (keepAliveMinutes && keepAliveMinutes > 0) {
+        const ms = keepAliveMinutes * 60 * 1000;
+        setTimeout(async () => {
+          try {
+            console.log(`⏰ ${userName} leaving meeting after ${keepAliveMinutes} minutes`);
+            try { await page.close(); } catch {}
+            try { await browser.close(); } catch {}
+          } finally {
+            // cleanup from active lists
+            activePages = activePages.filter(p => p !== page);
+            activeBrowsers = activeBrowsers.filter(b => b !== browser);
+          }
+        }, ms).unref?.();
+      }
       
       return {
         success: true,
