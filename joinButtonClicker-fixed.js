@@ -267,7 +267,7 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
       throw new Error(`Join button not found for ${userName}`);
     }
     
-    // Wait for navigation
+    // Wait for meeting to load and handle common post-join popups
     console.log(`Waiting for meeting to load for ${userName}...`);
     await new Promise(resolve => setTimeout(resolve, 3000));
 
@@ -283,21 +283,66 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
         }
       }
     }
-    
-    // Check current URL
-    const currentUrl = page.url();
-    console.log(`Current URL for ${userName}: ${currentUrl}`);
-    
-    if (currentUrl.includes('app.zoom.us/wc/') || currentUrl.includes('zoom.us/wc/')) {
-      console.log(`Successfully joined meeting for ${userName}`);
-      
-      // Add to active browsers/pages
+
+    // Brief wait before handling popups
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      const handledPopup = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+        const lower = (el) => (el?.textContent || '').toLowerCase();
+        const aria = (el) => (el?.getAttribute('aria-label') || '').toLowerCase();
+        const continueWithout = buttons.find(btn => {
+          const t = lower(btn); const a = aria(btn);
+          return t.includes('continue without') || t.includes('join without') || a.includes('continue without') || a.includes('join without');
+        });
+        if (continueWithout) { continueWithout.click(); return true; }
+        const okBtn = buttons.find(btn => lower(btn).trim() === 'ok' || lower(btn).includes('got it'));
+        if (okBtn) { okBtn.click(); return true; }
+        return false;
+      });
+      if (handledPopup) {
+        console.log(`Post-join popup handled for ${userName}`);
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    } catch {}
+
+    // Validate actual in-meeting UI, not just URL
+    const validationStart = Date.now();
+    let isInMeeting = false;
+    let lastInMeetingSnapshot = null;
+    while (Date.now() - validationStart < 20000 && !isInMeeting) {
+      const inMeeting = await page.evaluate(() => {
+        const meetingControls = document.querySelectorAll('[data-testid], [aria-label*="mute" i], [aria-label*="video" i], [aria-label*="participant" i]');
+        const participantIndicators = document.querySelectorAll('[aria-label*="participant" i], [class*="participant" i], [data-testid*="participant" i]');
+        const meetingInterface = document.querySelectorAll('[class*="meeting" i], [class*="conference" i], [id*="meeting" i]');
+        const waitingForHost = document.body.innerText.toLowerCase().includes('please wait for the host to start this meeting');
+        const joinFromBrowser = Array.from(document.querySelectorAll('a, button')).some(el => (el.textContent||'').toLowerCase().includes('join from your browser'));
+        return {
+          controls: meetingControls.length,
+          participants: participantIndicators.length,
+          interface: meetingInterface.length,
+          waitingForHost,
+          joinFromBrowser,
+          url: window.location.href,
+          title: document.title
+        };
+      });
+      lastInMeetingSnapshot = inMeeting;
+      if (!inMeeting.waitingForHost && (inMeeting.controls > 0 || inMeeting.interface > 0)) {
+        isInMeeting = true;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    const finalUrl = page.url();
+    console.log(`Validation URL for ${userName}: ${finalUrl}`);
+
+    if (isInMeeting) {
+      console.log(`Successfully validated in-meeting UI for ${userName}`);
       activeBrowsers.push(browser);
-      // attach for status reporting
       try { page.userName = userName; } catch {}
       activePages.push(page);
-
-      // optional auto-leave after keepAliveMinutes
       if (keepAliveMinutes && keepAliveMinutes > 0) {
         const ms = keepAliveMinutes * 60 * 1000;
         setTimeout(async () => {
@@ -306,51 +351,22 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
             try { await page.close(); } catch {}
             try { await browser.close(); } catch {}
           } finally {
-            // cleanup from active lists
             activePages = activePages.filter(p => p !== page);
             activeBrowsers = activeBrowsers.filter(b => b !== browser);
           }
         }, ms).unref?.();
       }
-      
       return {
         success: true,
         message: `${userName} successfully joined meeting`,
         userName: userName,
-        url: currentUrl
+        url: finalUrl
       };
-    } else {
-      // One more wait in case the client is still loading
-      await new Promise(r => setTimeout(r, 4000));
-      const retryUrl = page.url();
-      if (retryUrl.includes('app.zoom.us/wc/') || retryUrl.includes('zoom.us/wc/')) {
-        console.log(`Successfully joined meeting on retry for ${userName}`);
-        activeBrowsers.push(browser);
-        try { page.userName = userName; } catch {}
-        activePages.push(page);
-        if (keepAliveMinutes && keepAliveMinutes > 0) {
-          const ms = keepAliveMinutes * 60 * 1000;
-          setTimeout(async () => {
-            try {
-              console.log(`⏰ ${userName} leaving meeting after ${keepAliveMinutes} minutes`);
-              try { await page.close(); } catch {}
-              try { await browser.close(); } catch {}
-            } finally {
-              activePages = activePages.filter(p => p !== page);
-              activeBrowsers = activeBrowsers.filter(b => b !== browser);
-            }
-          }, ms).unref?.();
-        }
-        return {
-          success: true,
-          message: `${userName} successfully joined meeting`,
-          userName: userName,
-          url: retryUrl
-        };
-      }
-      console.log(`Meeting interface check failed for ${userName}: Still on join page`);
-      throw new Error(`Meeting interface check failed for ${userName}`);
     }
+
+    // If we got here, we didn't see in-meeting UI; fail with context
+    console.log(`Meeting validation failed for ${userName}. URL: ${finalUrl}`);
+    throw new Error(`Meeting interface check failed for ${userName}`);
     
   } catch (error) {
     console.log(`Error for ${userName}: ${error.message}`);
