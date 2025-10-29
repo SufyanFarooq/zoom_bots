@@ -90,6 +90,8 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
       argsCount: launchOptions.args.length
     });
 
+    const LOOSE_VALIDATION = (process.env.LOOSE_VALIDATION || '').toLowerCase() === 'true' || process.env.LOOSE_VALIDATION === '1';
+
     browser = await puppeteer.launch(launchOptions);
     console.log(`Browser launched for ${userName}`);
 
@@ -306,51 +308,99 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
       }
     } catch {}
 
-    // Validate actual in-meeting UI, not just URL
-    const validationStart = Date.now();
-    let validationOutcome = { state: 'unknown', details: {} };
-    while (Date.now() - validationStart < 25000 && validationOutcome.state === 'unknown') {
-      const state = await page.evaluate(() => {
-        const bodyText = document.body.innerText.toLowerCase();
-        const queryAll = (sel) => Array.from(document.querySelectorAll(sel));
+    // In loose mode, accept URL-based success to mimic local behavior
+    if (LOOSE_VALIDATION) {
+      const looseUrl = page.url();
+      if (looseUrl.includes('app.zoom.us/wc/')) {
+        console.log(`[LooseValidation] URL indicates web client for ${userName}: ${looseUrl}`);
+        activeBrowsers.push(browser);
+        try { page.userName = userName; } catch {}
+        activePages.push(page);
+        if (keepAliveMinutes && keepAliveMinutes > 0) {
+          const ms = keepAliveMinutes * 60 * 1000;
+          setTimeout(async () => {
+            try {
+              console.log(`⏰ ${userName} leaving meeting after ${keepAliveMinutes} minutes`);
+              try { await page.close(); } catch {}
+              try { await browser.close(); } catch {}
+            } finally {
+              activePages = activePages.filter(p => p !== page);
+              activeBrowsers = activeBrowsers.filter(b => b !== browser);
+            }
+          }, ms).unref?.();
+        }
+        return { success: true, message: `${userName} successfully joined meeting`, userName, url: looseUrl };
+      }
+    }
 
-        // Indicators of true in-meeting UI (Zoom web client containers and leave button)
+    // Validate actual in-meeting UI, not just URL (scan all frames)
+    async function readStateFromFrame(frame) {
+      return await frame.evaluate(() => {
+        const bodyText = (document.body?.innerText || '').toLowerCase();
+        const queryAll = (sel) => Array.from(document.querySelectorAll(sel));
         const wcContainers = queryAll('[id^="wc-container"], #wc-container-right, #wc-container-left');
         const leaveButtons = queryAll('[aria-label*="leave" i], button[class*="leave" i], button[id*="leave" i]');
         const controls = queryAll('[aria-label*="mute" i], [aria-label*="video" i], [aria-label*="participants" i], [data-testid*="participant" i]');
-
-        // Blocking states
         const waitingRoom = bodyText.includes('waiting room') || bodyText.includes('host will let you in') || bodyText.includes('will let you in soon') || bodyText.includes('we\'ve notified the host');
         const hostNotStarted = bodyText.includes('waiting for the host to start this meeting') || bodyText.includes('host has not started the meeting');
         const authRequired = bodyText.includes('sign in to join') || bodyText.includes('this meeting is for authorized attendees only') || bodyText.includes('this meeting requires authentication');
         const recaptcha = document.querySelector('iframe[src*="recaptcha"], #g-recaptcha, .g-recaptcha') !== null || bodyText.includes('recaptcha');
         const passcodeIncorrect = bodyText.includes('incorrect passcode') || bodyText.includes('wrong passcode');
-
-        // Join page indicators
         const joinInputs = queryAll('#input-for-pwd, input[name="pwd"], input[name*="name" i]');
-
-        const inMeeting = (wcContainers.length > 0 && (controls.length > 0 || leaveButtons.length > 0)) && !waitingRoom && !hostNotStarted && !authRequired;
-
-        let state = 'unknown';
-        if (inMeeting) state = 'in_meeting';
-        else if (waitingRoom) state = 'waiting_room';
-        else if (hostNotStarted) state = 'host_not_started';
-        else if (authRequired) state = 'auth_required';
-        else if (recaptcha) state = 'recaptcha_required';
-        else if (passcodeIncorrect) state = 'incorrect_passcode';
-        else if (joinInputs.length > 0) state = 'on_join_screen';
-
         return {
-          state,
           url: window.location.href,
           title: document.title,
           wcContainers: wcContainers.length,
           leaveButtons: leaveButtons.length,
-          controls: controls.length
+          controls: controls.length,
+          waitingRoom,
+          hostNotStarted,
+          authRequired,
+          recaptcha,
+          passcodeIncorrect,
+          joinInputs: joinInputs.length
         };
       });
+    }
 
-      validationOutcome = state;
+    async function readAggregatedState(page) {
+      const frames = page.frames();
+      const states = [];
+      for (const f of frames) {
+        try { states.push(await readStateFromFrame(f)); } catch {}
+      }
+      // Aggregate
+      const agg = states.reduce((acc, s) => {
+        acc.wcContainers += s.wcContainers;
+        acc.leaveButtons += s.leaveButtons;
+        acc.controls += s.controls;
+        acc.waitingRoom = acc.waitingRoom || s.waitingRoom;
+        acc.hostNotStarted = acc.hostNotStarted || s.hostNotStarted;
+        acc.authRequired = acc.authRequired || s.authRequired;
+        acc.recaptcha = acc.recaptcha || s.recaptcha;
+        acc.passcodeIncorrect = acc.passcodeIncorrect || s.passcodeIncorrect;
+        acc.joinInputs += s.joinInputs;
+        acc.urls.add(s.url);
+        return acc;
+      }, { wcContainers: 0, leaveButtons: 0, controls: 0, waitingRoom: false, hostNotStarted: false, authRequired: false, recaptcha: false, passcodeIncorrect: false, joinInputs: 0, urls: new Set() });
+
+      let state = 'unknown';
+      const inMeeting = (agg.wcContainers > 0 && (agg.controls > 0 || agg.leaveButtons > 0)) && !agg.waitingRoom && !agg.hostNotStarted && !agg.authRequired;
+      if (inMeeting) state = 'in_meeting';
+      else if (agg.waitingRoom) state = 'waiting_room';
+      else if (agg.hostNotStarted) state = 'host_not_started';
+      else if (agg.authRequired) state = 'auth_required';
+      else if (agg.recaptcha) state = 'recaptcha_required';
+      else if (agg.passcodeIncorrect) state = 'incorrect_passcode';
+      else if (agg.joinInputs > 0) state = 'on_join_screen';
+
+      return { state, wcContainers: agg.wcContainers, leaveButtons: agg.leaveButtons, controls: agg.controls, urls: Array.from(agg.urls) };
+    }
+
+    const validationStart = Date.now();
+    let validationOutcome = { state: 'unknown' };
+    while (Date.now() - validationStart < 25000 && validationOutcome.state === 'unknown') {
+      validationOutcome = await readAggregatedState(page);
       if (validationOutcome.state === 'unknown' || validationOutcome.state === 'on_join_screen') {
         await new Promise(r => setTimeout(r, 1200));
       }
