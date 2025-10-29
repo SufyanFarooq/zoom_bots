@@ -124,9 +124,67 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
 
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
     await page.goto(zoomJoinUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-    console.log(`Page loaded for ${userName}, waiting for form...`);
-    
-    // Wait for page to load
+    console.log(`Page loaded for ${userName}, ensuring web client view...`);
+
+    // Ensure we are on the web client (click "Join from your browser" if a launch page appears)
+    async function tryClickJoinFromBrowser(timeoutMs = 8000) {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        // Try in main frame
+        try {
+          const clicked = await page.evaluate(() => {
+            const els = Array.from(document.querySelectorAll('a, button'));
+            const isJoinFromBrowser = (el) => {
+              const t = (el.textContent || '').toLowerCase().trim();
+              return t.includes('join from your browser') || t.includes('join from browser');
+            };
+            const byText = els.find(isJoinFromBrowser);
+            if (byText) { byText.click(); return true; }
+            const byHref = els.find(el => (el.getAttribute('href') || '').includes('/wc/'));
+            if (byHref) { byHref.click(); return true; }
+            return false;
+          });
+          if (clicked) return true;
+        } catch {}
+        // Try in child frames
+        for (const frame of page.frames()) {
+          try {
+            const clicked = await frame.evaluate(() => {
+              const els = Array.from(document.querySelectorAll('a, button'));
+              const isJoinFromBrowser = (el) => {
+                const t = (el.textContent || '').toLowerCase().trim();
+                return t.includes('join from your browser') || t.includes('join from browser');
+              };
+              const byText = els.find(isJoinFromBrowser);
+              if (byText) { byText.click(); return true; }
+              const byHref = els.find(el => (el.getAttribute('href') || '').includes('/wc/'));
+              if (byHref) { byHref.click(); return true; }
+              return false;
+            });
+            if (clicked) return true;
+          } catch {}
+        }
+        await new Promise(r => setTimeout(r, 250));
+      }
+      return false;
+    }
+
+    // If this is a launch page prompting to open the app, click the browser link
+    try {
+      const isLaunchPage = await page.evaluate(() => {
+        const txt = (document.body?.innerText || '').toLowerCase();
+        return txt.includes('click open zoom.us') || txt.includes('launch meeting') || txt.includes('zoom workplace app');
+      });
+      if (isLaunchPage) {
+        const didClick = await tryClickJoinFromBrowser(6000);
+        if (didClick) {
+          console.log('Clicked "Join from your browser" to enter web client');
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+    } catch {}
+
+    // Wait for page to settle
     await new Promise(resolve => setTimeout(resolve, 3000));
     
     // Handle cookie consent popup if present
