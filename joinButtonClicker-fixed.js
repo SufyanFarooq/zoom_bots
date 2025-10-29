@@ -361,6 +361,35 @@ export async function joinZoomMeeting(meetingNumber, passWord, userName, keepAli
     console.log(`Validation outcome for ${userName}:`, validationOutcome);
 
     if (validationOutcome.state === 'in_meeting') {
+      // Extra connectivity validation: ensure not in reconnecting/connecting state and UI is interactive
+      let connected = false;
+      const connectivityStart = Date.now();
+      while (!connected && Date.now() - connectivityStart < 15000) {
+        const connectivity = await page.evaluate(async () => {
+          const hasErrorOverlay = document.querySelector('[class*="disconnected" i], [class*="reconnect" i], [class*="connection-error" i], [class*="connecting" i]') !== null;
+          const leaveBtn = document.querySelector('[aria-label*="leave" i], button[class*="leave" i], button[id*="leave" i]');
+          // Try toggling participants panel to confirm interactivity
+          const participantsBtn = document.querySelector('[aria-label*="participants" i]');
+          let panelOpened = false;
+          if (participantsBtn) {
+            try { participantsBtn.click(); } catch {}
+            await new Promise(r => setTimeout(r, 200));
+            panelOpened = !!document.querySelector('[role="dialog" i], [aria-label*="participants" i][role]');
+          }
+          return { hasErrorOverlay, hasLeave: !!leaveBtn, panelOpened, pageVisible: !document.hidden };
+        });
+        if (!connectivity.hasErrorOverlay && (connectivity.hasLeave || connectivity.panelOpened) && connectivity.pageVisible) {
+          connected = true;
+          break;
+        }
+        await new Promise(r => setTimeout(r, 600));
+      }
+
+      if (!connected) {
+        console.log(`Connectivity validation inconclusive for ${userName}; treating as not joined`);
+        throw new Error('Connected UI not confirmed');
+      }
+
       console.log(`Successfully validated in-meeting UI for ${userName}`);
       activeBrowsers.push(browser);
       try { page.userName = userName; } catch {}
