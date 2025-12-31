@@ -12,52 +12,90 @@ async function joinZoomMeeting() {
   let browser;
   
   try {
-    // Launch browser with detached mode
+    // Detect Chrome executable path
+    let chromePath = process.env.CHROME_PATH;
+    if (!chromePath) {
+      // Try different possible Chrome paths (macOS first)
+      const possiblePaths = [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/usr/bin/google-chrome',
+        '/opt/google/chrome/chrome'
+      ];
+      
+      for (const path of possiblePaths) {
+        try {
+          const { execSync } = await import('child_process');
+          // For macOS app bundles, check if file exists directly
+          if (path.includes('.app/')) {
+            execSync(`test -f "${path}"`, { stdio: 'ignore' });
+            chromePath = path;
+            break;
+          } else {
+            // For system binaries, use which command
+            execSync(`which ${path.split('/').pop()}`, { stdio: 'ignore' });
+            chromePath = path;
+            break;
+          }
+        } catch (e) {
+          // Continue to next path
+        }
+      }
+    }
+
+    console.log(`🔍 Using Chrome path: ${chromePath}`);
+
+    // Enhanced launch options for Docker environment
     const launchOptions = {
-      headless: true, // Keep visible for debugging
-      executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      headless: true,
+      executablePath: chromePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
         '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
         '--disable-extensions',
         '--disable-plugins',
         '--disable-images',
+        '--disable-javascript-harmony-shipping',
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
         '--disable-renderer-backgrounding',
+        '--disable-field-trial-config',
+        '--disable-back-forward-cache',
         '--disable-ipc-flooding-protection',
-        '--memory-pressure-off',
-        '--max_old_space_size=30',  // Reduced from 50 to 30
+        '--no-first-run',
         '--no-default-browser-check',
+        '--no-zygote',
+        '--memory-pressure-off',
+        '--max_old_space_size=128',
+        `--user-data-dir=/tmp/puppeteer_profile_${botName}_${Date.now()}`,
+        '--disable-background-networking',
         '--disable-default-apps',
         '--disable-sync',
-        '--disable-translate',
-        '--hide-scrollbars',
+        '--metrics-recording-only',
         '--mute-audio',
-        '--disable-web-security',
-        '--disable-blink-features=AutomationControlled',
-        '--disable-video-capture',
-        '--disable-video',
-        '--remote-debugging-port=0',
-        '--user-data-dir=/tmp/puppeteer_profile_' + Math.random().toString(36).substring(7),
-        '--disable-javascript-harmony-shipping',
-        '--disable-background-networking',
+        '--disable-audio-output',
+        '--disable-notifications',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-hang-monitor',
         '--disable-client-side-phishing-detection',
         '--disable-component-update',
         '--disable-domain-reliability',
-        '--disable-features=TranslateUI,BlinkGenPropertyTrees',
-        '--disable-hang-monitor',
-        '--disable-prompt-on-repost',
-        '--disable-web-resources',
-        '--no-pings',
-        '--process-per-tab',
-        '--max-memory-usage=50'  // Limit memory to 50MB per process
-      ]
+        '--disable-features=TranslateUI',
+        '--disable-features=BlinkGenPropertyTrees',
+        '--disable-ipc-flooding-protection',
+        '--window-size=1024,768'
+      ],
+      ignoreDefaultArgs: ['--enable-automation'],
+      ignoreHTTPSErrors: true,
+      defaultViewport: { width: 1024, height: 768 },
+      timeout: 120000,
+      protocolTimeout: 120000
     };
 
     browser = await puppeteer.launch(launchOptions);
@@ -122,41 +160,163 @@ async function joinZoomMeeting() {
     // Random delay before entering name
     await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
     
-    // Enter bot name
+    // Enter bot name with enhanced selectors
     console.log(`Entering name for ${botName}...`);
-    try {
-      await page.waitForSelector('input[type="text"]', { timeout: 30000 });
-      await page.type('input[type="text"]', botName, { delay: 100 + Math.random() * 200 });
-      console.log(`Name entered for ${botName}`);
-    } catch (error) {
-      console.log(`Name input not found for ${botName}, trying alternative selectors...`);
+    
+    // First, detect what type of Zoom page we're on
+    const pageType = await page.evaluate(() => {
+      const title = document.title;
+      const url = window.location.href;
+      const hasJoinForm = document.querySelector('form') !== null;
+      const hasNameInput = document.querySelector('input[type="text"]') !== null;
+      const bodyText = document.body.innerText;
+      
+      return {
+        title,
+        url,
+        hasJoinForm,
+        hasNameInput,
+        bodyTextLength: bodyText.length,
+        hasZoomBranding: bodyText.includes('Zoom') || bodyText.includes('zoom'),
+        hasJoinButton: bodyText.includes('Join') || bodyText.includes('join')
+      };
+    });
+    
+    console.log(`🔍 Page analysis for ${botName}:`, JSON.stringify(pageType, null, 2));
+    
+    const nameSelectors = [
+      // Primary selectors
+      'input[type="text"]',
+      'input[placeholder*="name" i]',
+      'input[name*="name" i]',
+      'input[id*="name" i]',
+      'input[class*="name" i]',
+      'input[aria-label*="name" i]',
+      
+      // Zoom-specific selectors
+      '#input-for-name',
+      '.name-input',
+      'input[data-testid*="name" i]',
+      'input[data-cy*="name" i]',
+      'input[data-qa*="name" i]',
+      
+      // Generic form selectors
+      'input:not([type="password"]):not([type="email"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"])',
+      'input[maxlength="64"]',
+      'input[autocomplete="name"]',
+      'input[autocomplete="given-name"]',
+      'input[autocomplete="family-name"]',
+      
+      // Fallback selectors
+      'input[size="30"]',
+      'input[tabindex="1"]',
+      'form input:first-of-type',
+      '.form-control',
+      '.input-field',
+      '[contenteditable="true"]',
+      
+      // Last resort - any visible input
+      'input[style*="display: block"]',
+      'input:not([style*="display: none"]):not([style*="visibility: hidden"])'
+    ];
+    
+    let nameEntered = false;
+    
+    for (const selector of nameSelectors) {
       try {
-        await page.type('input[placeholder*="name"], input[name*="name"]', botName, { delay: 100 + Math.random() * 200 });
-        console.log(`Name entered via alternative selector for ${botName}`);
-      } catch (error2) {
-        console.log(`Error for ${botName}: Name input not found`);
-        throw new Error(`Name input not found for ${botName}`);
+        console.log(`Trying selector: ${selector}`);
+        await page.waitForSelector(selector, { timeout: 5000 });
+        
+        // Check if element is visible and interactable
+        const element = await page.$(selector);
+        const isVisible = await page.evaluate(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && 
+                 window.getComputedStyle(el).visibility !== 'hidden' &&
+                 window.getComputedStyle(el).display !== 'none';
+        }, element);
+        
+        if (isVisible) {
+          // Clear and type name
+          await element.click({ clickCount: 3 });
+          await element.press('Backspace');
+          await element.type(botName, { delay: 100 + Math.random() * 200 });
+          
+          // Verify text was entered
+          const value = await page.evaluate(el => el.value, element);
+          if (value.includes(botName)) {
+            console.log(`✅ Name entered successfully with selector: ${selector}`);
+            nameEntered = true;
+            break;
+          }
+        }
+      } catch (error) {
+        // Continue to next selector
+        continue;
       }
+    }
+    
+    if (!nameEntered) {
+      console.log(`❌ Error for ${botName}: Name input not found with any selector`);
+      
+      // Take debug screenshot for failed bots
+      try {
+        const screenshot = await page.screenshot({ 
+          path: `/tmp/debug-${botName}-${Date.now()}.png`,
+          fullPage: true 
+        });
+        console.log(`📸 Debug screenshot saved for ${botName}`);
+        
+        // Also log page HTML for debugging
+        const html = await page.content();
+        console.log(`📝 Page HTML length for ${botName}: ${html.length} characters`);
+        
+        // Log all input elements found
+        const inputs = await page.$$eval('input', elements => 
+          elements.map(el => ({
+            type: el.type,
+            placeholder: el.placeholder,
+            name: el.name,
+            id: el.id,
+            className: el.className,
+            visible: el.offsetWidth > 0 && el.offsetHeight > 0
+          }))
+        );
+        console.log(`🔍 Found ${inputs.length} input elements for ${botName}:`, JSON.stringify(inputs, null, 2));
+        
+      } catch (debugError) {
+        console.log(`⚠️ Debug capture failed for ${botName}: ${debugError.message}`);
+      }
+      
+      throw new Error(`Name input not found for ${botName}`);
     }
     
     // Random delay before entering passcode
     await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
     
-    // Enter passcode
-    console.log(`Entering passcode for ${botName}...`);
-    try {
-      await page.waitForSelector('#input-for-pwd', { timeout: 30000 });
-      await page.type('#input-for-pwd', passcode, { delay: 100 + Math.random() * 200 });
-      console.log(`Passcode entered for ${botName}`);
-    } catch (error) {
-      console.log(`Passcode input not found for ${botName}, trying fallback...`);
+    // Enter passcode (if required)
+    if (passcode && passcode.trim() !== '') {
+      console.log(`Entering passcode for ${botName}...`);
       try {
-        await page.type('input[type="password"]', passcode, { delay: 100 + Math.random() * 200 });
-        console.log(`Passcode entered via fallback for ${botName}`);
-      } catch (error2) {
-        console.log(`Error for ${botName}: Passcode input not found`);
-        throw new Error(`Passcode input not found for ${botName}`);
+        await page.waitForSelector('#input-for-pwd', { timeout: 10000 });
+        await page.type('#input-for-pwd', passcode, { delay: 100 + Math.random() * 200 });
+        console.log(`Passcode entered for ${botName}`);
+      } catch (error) {
+        console.log(`Passcode input not found for ${botName}, trying fallback...`);
+        try {
+          const passwordInput = await page.$('input[type="password"]');
+          if (passwordInput) {
+            await passwordInput.type(passcode, { delay: 100 + Math.random() * 200 });
+            console.log(`Passcode entered via fallback for ${botName}`);
+          } else {
+            console.log(`No passcode field found for ${botName} - meeting may not require one`);
+          }
+        } catch (error2) {
+          console.log(`No passcode field found for ${botName} - meeting may not require one`);
+        }
       }
+    } else {
+      console.log(`No passcode provided for ${botName} - skipping passcode entry`);
     }
     
     // Random delay before clicking join

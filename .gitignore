@@ -5,54 +5,20 @@ yarn-debug.log*
 yarn-error.log*
 
 # Environment variables
+.env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
 
 # Logs
-logs
+logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
 
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
-coverage/
-
-# nyc test coverage
-.nyc_output
-
-# Dependency directories
-node_modules/
-jspm_packages/
-
-# Optional npm cache directory
-.npm
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# dotenv environment variables file
-.env.test
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
+# OS files
 .DS_Store
 .DS_Store?
 ._*
@@ -61,14 +27,43 @@ jspm_packages/
 ehthumbs.db
 Thumbs.db
 
-# Screenshots
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Chrome/Chromium
+chrome/
+*.crx
+*.pem
+
+# Debug files
+debug-*.png
+debug-*.json
 *.png
 *.jpg
-*.jpeg
 
 # Temporary files
 tmp/
 temp/
+*.tmp
 
-# Chrome browser files (too large for GitHub)
-chrome/ 
+# PM2
+.pm2/
+ecosystem.config.js.bak
+
+# Build files
+dist/
+build/
+*.tar.gz
+*.zip
+
+# Test files
+test-*.js
+test-*.cjs
+test-*.sh
+
+# Deployment files (keep structure, ignore sensitive data)
+# Keep deploy.sh and monitor.sh but ignore .env
