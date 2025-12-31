@@ -1,4 +1,34 @@
 import puppeteer from 'puppeteer-core';
+import fs from 'fs';
+
+function getChromeExecutablePath() {
+  const envPath = (process.env.CHROME_PATH || '').trim();
+  if (envPath) return envPath;
+
+  const candidates = [];
+  if (process.platform === 'darwin') {
+    candidates.push('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+    candidates.push('/Applications/Chromium.app/Contents/MacOS/Chromium');
+  } else if (process.platform === 'win32') {
+    candidates.push('C:/Program Files/Google/Chrome/Application/chrome.exe');
+    candidates.push('C:/Program Files (x86)/Google/Chrome/Application/chrome.exe');
+  } else {
+    // Linux
+    candidates.push('/usr/bin/google-chrome-stable');
+    candidates.push('/usr/bin/google-chrome');
+    candidates.push('/usr/bin/chromium');
+    candidates.push('/usr/bin/chromium-browser');
+    candidates.push('/snap/bin/chromium');
+    candidates.push('/opt/google/chrome/chrome');
+  }
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {}
+  }
+  return process.platform === 'win32' ? 'chrome.exe' : 'google-chrome';
+}
 
 // Configuration
 const botName = process.argv[2];
@@ -49,7 +79,7 @@ async function joinZoomMeeting() {
     // Enhanced launch options for Docker environment
     const launchOptions = {
       headless: true,
-      executablePath: chromePath,
+      executablePath: chromePath || getChromeExecutablePath(),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
