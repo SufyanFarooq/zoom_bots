@@ -165,24 +165,30 @@ async function joinZoomMeeting() {
       // Store the original getUserMedia
       const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
       
-      // Override getUserMedia: Provide video (so icon appears), deny audio
+      // Override getUserMedia: ALWAYS provide video (so icon appears), deny audio
       navigator.mediaDevices.getUserMedia = async (constraints) => {
+        console.log(`[Browser] getUserMedia called with constraints:`, JSON.stringify(constraints));
+        
         // Always deny audio
         if (constraints && constraints.audio) {
           constraints.audio = false;
         }
         
-        // If video is requested, provide it (we'll stop it later in the UI)
+        // If video is requested, ALWAYS provide it (we'll stop it later in the UI)
+        // This is CRITICAL for video icon to appear in participant list
         if (constraints && constraints.video) {
+          console.log(`[Browser] Video requested - providing fake video stream so icon appears`);
           // Return fake video stream - we'll stop it after joining
           const stream = createFakeVideoStream();
           // Store globally so we can access it later to disable
           window.localStream = stream;
           window.fakeVideoStream = stream;
+          console.log(`[Browser] Video stream created and stored globally`);
           return stream;
         }
         
         // If only audio requested, deny
+        console.log(`[Browser] Only audio requested - denying`);
         throw new Error('Audio permission denied');
       };
       
