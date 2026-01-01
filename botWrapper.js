@@ -1,5 +1,9 @@
 import puppeteer from 'puppeteer-core';
 import fs from 'fs';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 function getChromeExecutablePath() {
   const envPath = (process.env.CHROME_PATH || '').trim();
