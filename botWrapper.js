@@ -939,10 +939,9 @@ async function joinZoomMeeting() {
     
     // Disable video immediately
     await disableVideoImmediately(botName, page);
-  }
-  
-  // Helper function to disable video immediately (called from multiple places)
-  async function disableVideoImmediately(botName, page) {
+    
+    // Helper function to disable video immediately (called from multiple places)
+    async function disableVideoImmediately(botName, page) {
     try {
       const result = await page.evaluate(async () => {
         const logs = [];
