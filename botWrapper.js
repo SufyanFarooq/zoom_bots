@@ -474,9 +474,19 @@ async function joinZoomMeeting() {
     await new Promise(resolve => setTimeout(resolve, 5000));
     
     // Handle microphone and camera permission popup - SELECT "Join with video" so icon appears, then disable it
+    // Try multiple times with increasing wait times to catch the permission dialog
     console.log(`🎥 [${botName}] Checking for microphone/camera permission popup...`);
-    try {
-      const permissionResult = await page.evaluate(() => {
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        // Wait a bit longer for permission dialog to appear (1s, 3s, 5s)
+        if (attempt > 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        const permissionResult = await page.evaluate(() => {
         // Look for the permission dialog - it has a specific structure
         // <permission type="camera"> element is the "Use camera" button
         const permissionDialog = document.querySelector('.pepc-permission-dialog');
