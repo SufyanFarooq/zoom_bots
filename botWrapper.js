@@ -140,6 +140,102 @@ async function joinZoomMeeting() {
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
 
+    // ========== BROWSER DETECTION & LOGGING ==========
+    console.log(`\n🔍 ========== BROWSER DETECTION [${botName}] ==========`);
+    
+    // Get browser version
+    try {
+      const browserVersion = await browser.version();
+      console.log(`🌐 Browser Version: ${browserVersion}`);
+    } catch (e) {
+      console.log(`⚠️ Could not get browser version: ${e.message}`);
+    }
+    
+    // Get Chrome executable path info
+    try {
+      const { execSync } = await import('child_process');
+      const chromePath = chromePath || getChromeExecutablePath();
+      console.log(`📍 Chrome Executable: ${chromePath}`);
+      
+      // Get Chrome version from command line
+      try {
+        const chromeVersion = execSync(`${chromePath} --version`, { encoding: 'utf-8', timeout: 5000 }).trim();
+        console.log(`🔧 Chrome CLI Version: ${chromeVersion}`);
+      } catch (e) {
+        console.log(`⚠️ Could not get Chrome CLI version: ${e.message}`);
+      }
+    } catch (e) {
+      console.log(`⚠️ Could not get Chrome path info: ${e.message}`);
+    }
+    
+    // Get user agent
+    try {
+      const userAgent = await page.evaluate(() => navigator.userAgent);
+      console.log(`👤 User Agent: ${userAgent}`);
+    } catch (e) {
+      console.log(`⚠️ Could not get user agent: ${e.message}`);
+    }
+    
+    // Get platform info
+    try {
+      const platformInfo = await page.evaluate(() => ({
+        platform: navigator.platform,
+        vendor: navigator.vendor,
+        language: navigator.language,
+        languages: navigator.languages,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: navigator.deviceMemory || 'N/A',
+        maxTouchPoints: navigator.maxTouchPoints || 0
+      }));
+      console.log(`💻 Platform Info:`, JSON.stringify(platformInfo, null, 2));
+    } catch (e) {
+      console.log(`⚠️ Could not get platform info: ${e.message}`);
+    }
+    
+    // Check browser capabilities
+    try {
+      const capabilities = await page.evaluate(() => ({
+        hasMediaDevices: !!navigator.mediaDevices,
+        hasGetUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+        hasPermissions: !!navigator.permissions,
+        hasWebRTC: !!(window.RTCPeerConnection || window.webkitRTCPeerConnection),
+        isHeadless: navigator.webdriver || false,
+        webdriver: navigator.webdriver || false
+      }));
+      console.log(`🔧 Browser Capabilities:`, JSON.stringify(capabilities, null, 2));
+    } catch (e) {
+      console.log(`⚠️ Could not get browser capabilities: ${e.message}`);
+    }
+    
+    // Check if headless
+    try {
+      const isHeadless = await page.evaluate(() => {
+        return navigator.webdriver || 
+               !window.chrome || 
+               window.chrome.runtime === undefined ||
+               navigator.plugins.length === 0;
+      });
+      console.log(`🎭 Headless Mode: ${isHeadless ? 'YES (Detected)' : 'NO (Not detected)'}`);
+      console.log(`🎭 Launch Option Headless: ${launchOptions.headless}`);
+    } catch (e) {
+      console.log(`⚠️ Could not detect headless mode: ${e.message}`);
+    }
+    
+    // Get viewport info
+    try {
+      const viewport = page.viewport();
+      console.log(`📐 Viewport: ${JSON.stringify(viewport)}`);
+    } catch (e) {
+      console.log(`⚠️ Could not get viewport: ${e.message}`);
+    }
+    
+    // Check environment
+    console.log(`🖥️  System Platform: ${process.platform}`);
+    console.log(`🖥️  Node Version: ${process.version}`);
+    console.log(`🖥️  Chrome Path Env: ${process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_PATH || 'Not set'}`);
+    
+    console.log(`🔍 ========== END BROWSER DETECTION ==========\n`);
+
     // Set permissions: Allow camera (so video icon appears), deny microphone
     const context = browser.defaultBrowserContext();
     // Allow camera so Zoom shows video icon, deny microphone
