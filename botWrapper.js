@@ -154,12 +154,12 @@ async function joinZoomMeeting() {
     // Get Chrome executable path info
     try {
       const { execSync } = await import('child_process');
-      const chromePath = chromePath || getChromeExecutablePath();
-      console.log(`📍 Chrome Executable: ${chromePath}`);
+      const detectedChromePath = chromePath || getChromeExecutablePath();
+      console.log(`📍 Chrome Executable: ${detectedChromePath}`);
       
       // Get Chrome version from command line
       try {
-        const chromeVersion = execSync(`${chromePath} --version`, { encoding: 'utf-8', timeout: 5000 }).trim();
+        const chromeVersion = execSync(`${detectedChromePath} --version`, { encoding: 'utf-8', timeout: 5000 }).trim();
         console.log(`🔧 Chrome CLI Version: ${chromeVersion}`);
       } catch (e) {
         console.log(`⚠️ Could not get Chrome CLI version: ${e.message}`);
