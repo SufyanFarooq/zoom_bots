@@ -960,14 +960,17 @@ async function joinZoomMeeting() {
       }
     }
     
-    // Wait for meeting to load (minimal wait for fast execution)
-    console.log(`Waiting for meeting interface to load for ${botName}...`);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
     // Disable video IMMEDIATELY after joining (so icon appears but is crossed/disabled)
     // FAST & SMART: Single attempt with all methods combined
-    console.log(`🎥 [${botName}] Disabling video (single fast attempt)...`);
+    // Wait minimal time for meeting interface
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
+    // Disable video immediately
+    await disableVideoImmediately(botName, page);
+  }
+  
+  // Helper function to disable video immediately (called from multiple places)
+  async function disableVideoImmediately(botName, page) {
     try {
       const result = await page.evaluate(async () => {
         const logs = [];
