@@ -300,6 +300,15 @@ async function joinZoomMeeting() {
           console.log(`[Browser] Video requested - providing fake video stream so icon appears`);
           // Return fake video stream - we'll stop it after joining
           const stream = createFakeVideoStream();
+          
+          // CRITICAL: Ensure video track is enabled initially so Zoom detects it
+          const videoTrack = stream.getVideoTracks()[0];
+          if (videoTrack) {
+            videoTrack.enabled = true; // Enable initially so icon appears
+            videoTrack.muted = false;  // Not muted initially
+            console.log(`[Browser] Video track enabled: ${videoTrack.enabled}, muted: ${videoTrack.muted}, readyState: ${videoTrack.readyState}`);
+          }
+          
           // Store globally so we can access it later to disable
           window.localStream = stream;
           window.fakeVideoStream = stream;
@@ -311,6 +320,26 @@ async function joinZoomMeeting() {
         console.log(`[Browser] Only audio requested - denying`);
         throw new Error('Audio permission denied');
       };
+      
+      // Also override enumerateDevices to list fake video device
+      if (navigator.mediaDevices.enumerateDevices) {
+        const originalEnumerateDevices = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+        navigator.mediaDevices.enumerateDevices = async () => {
+          const devices = await originalEnumerateDevices();
+          // Add fake video device if not present
+          const hasVideoDevice = devices.some(d => d.kind === 'videoinput');
+          if (!hasVideoDevice) {
+            devices.push({
+              deviceId: 'fake-video-device',
+              kind: 'videoinput',
+              label: 'Fake Video Device',
+              groupId: 'fake-video-group'
+            });
+            console.log(`[Browser] Added fake video device to enumerateDevices`);
+          }
+          return devices;
+        };
+      }
       
       // Override permissions API - allow camera (so icon appears), deny microphone
       if (navigator.permissions) {
