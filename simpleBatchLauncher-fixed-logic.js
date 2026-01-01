@@ -101,8 +101,10 @@ function generateRealName() {
 function launchBot(botName) {
   console.log(`🤖 Launching ${botName}...`);
   
-  // Detect Chrome path for server
-  let chromePath = process.env.CHROME_PATH;
+  // Detect Chrome path for server - check multiple environment variable names
+  let chromePath = process.env.CHROME_PATH || 
+                   process.env.PUPPETEER_EXECUTABLE_PATH || 
+                   process.env.CHROMIUM_PATH;
   if (!chromePath) {
     // Try to find Chrome on Linux
     try {

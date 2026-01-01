@@ -6,7 +6,10 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 function getChromeExecutablePath() {
-  const envPath = (process.env.CHROME_PATH || '').trim();
+  // Check multiple environment variable names
+  const envPath = (process.env.CHROME_PATH || 
+                   process.env.PUPPETEER_EXECUTABLE_PATH || 
+                   process.env.CHROMIUM_PATH || '').trim();
   if (envPath) return envPath;
 
   const candidates = [];
@@ -46,8 +49,10 @@ async function joinZoomMeeting() {
   let browser;
   
   try {
-    // Detect Chrome executable path
-    let chromePath = process.env.CHROME_PATH;
+    // Detect Chrome executable path - check multiple environment variable names
+    let chromePath = process.env.CHROME_PATH || 
+                     process.env.PUPPETEER_EXECUTABLE_PATH || 
+                     process.env.CHROMIUM_PATH;
     if (!chromePath) {
       // Try different possible Chrome paths (macOS first)
       const possiblePaths = [
