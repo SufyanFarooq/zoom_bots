@@ -163,15 +163,46 @@ function launchBot(botName) {
     botInfo.readyForNextBatch = true; // Bot is definitely ready for next batch
   });
 
-  // FIXED LOGIC: Mark as joined and ready after 120 seconds if still running
-  setTimeout(() => {
-    if (botInfo.status === 'running') {
-      console.log(`✅ ${botInfo.name} successfully joined meeting! (120s)`);
-      botInfo.joinedMeeting = true;
-      botInfo.readyForNextBatch = true;  // KEY FIX: Ready for next batch!
-      totalSuccessful++;
+  // Smart detection: Bots that join stay running, bots that fail exit quickly
+  // Check process status periodically
+  let checkCount = 0;
+  const checkInterval = setInterval(() => {
+    checkCount++;
+    const elapsed = Math.round((Date.now() - botInfo.startTime) / 1000);
+    
+    // If process is still running after 30 seconds, likely joined successfully
+    // Failed bots usually exit within 10-20 seconds
+    if (elapsed > 30 && botInfo.status === 'running' && !botInfo.joinedMeeting) {
+      // Double check process is still alive
+      try {
+        process.kill(botInfo.pid, 0); // Signal 0 checks if process exists
+        botInfo.joinedMeeting = true;
+        botInfo.readyForNextBatch = true;
+        totalSuccessful++;
+        console.log(`✅ ${botInfo.name} successfully joined meeting! (${elapsed}s)`);
+        clearInterval(checkInterval);
+      } catch (e) {
+        // Process doesn't exist - will be handled by exit event
+        clearInterval(checkInterval);
+      }
     }
-  }, 120000); // 120 seconds - time to join meeting
+    
+    // Stop checking after 60 seconds (fallback will handle it)
+    if (checkCount >= 12) {
+      clearInterval(checkInterval);
+    }
+  }, 5000); // Check every 5 seconds
+
+  // Fallback: Mark as joined after 60 seconds if still running (reduced from 120s)
+  setTimeout(() => {
+    if (botInfo.status === 'running' && !botInfo.joinedMeeting) {
+      botInfo.joinedMeeting = true;
+      botInfo.readyForNextBatch = true;
+      totalSuccessful++;
+      console.log(`✅ ${botInfo.name} successfully joined meeting! (60s)`);
+      clearInterval(checkInterval);
+    }
+  }, 60000); // 60 seconds fallback (reduced from 120s)
 
   totalBotsLaunched++;
 }
@@ -205,25 +236,41 @@ async function launchBatch() {
   await waitForBatchReadyForNext();
 }
 
-// FIXED: Wait for current batch to be ready for next batch (not fully completed)
+// OPTIMIZED: Wait for current batch to be ready for next batch with smart detection
 async function waitForBatchReadyForNext() {
   console.log(`⏳ Waiting for Batch ${currentBatchNumber} bots to join meeting...`);
   
   return new Promise((resolve) => {
+    let lastStatus = '';
+    let checkCount = 0;
+    const maxChecks = 20; // Maximum 20 checks (100 seconds max wait)
+    
     const checkInterval = setInterval(() => {
-      // NEW LOGIC: Count bots that are ready for next batch
+      checkCount++;
       const readyForNext = currentBatchBots.filter(bot => bot.readyForNextBatch);
       const joinedMeeting = currentBatchBots.filter(bot => bot.joinedMeeting);
       const failed = currentBatchBots.filter(bot => bot.status === 'failed');
       
-      console.log(`📊 Batch ${currentBatchNumber} Status: ${joinedMeeting.length} joined meeting, ${failed.length} failed, ${readyForNext.length}/${currentBatchBots.length} ready for next batch`);
+      const status = `${joinedMeeting.length} joined, ${failed.length} failed, ${readyForNext.length}/${currentBatchBots.length} ready`;
       
-      // FIXED CONDITION: Continue when all bots are ready for next batch
-      if (readyForNext.length >= currentBatchBots.length) {
+      // Only log if status changed or every 3rd check (reduce log spam)
+      if (status !== lastStatus || checkCount % 3 === 0) {
+        console.log(`📊 Batch ${currentBatchNumber}: ${status}`);
+        lastStatus = status;
+      }
+      
+      // Continue when all bots are ready OR if all joined (even if some failed)
+      if (readyForNext.length >= currentBatchBots.length || 
+          (joinedMeeting.length + failed.length) >= currentBatchBots.length) {
         clearInterval(checkInterval);
         const successRate = (joinedMeeting.length / currentBatchBots.length) * 100;
-        console.log(`✅ Batch ${currentBatchNumber} ready for next batch! Joined: ${joinedMeeting.length}/${currentBatchBots.length} (${successRate.toFixed(1)}%)`);
+        console.log(`✅ Batch ${currentBatchNumber} ready! Joined: ${joinedMeeting.length}/${currentBatchBots.length} (${successRate.toFixed(1)}%)`);
         console.log(`📈 Total bots in meeting: ${totalSuccessful}`);
+        resolve();
+      } else if (checkCount >= maxChecks) {
+        // Timeout after max checks
+        clearInterval(checkInterval);
+        console.log(`⏱️  Batch ${currentBatchNumber} timeout. Proceeding with ${joinedMeeting.length}/${currentBatchBots.length} joined.`);
         resolve();
       }
     }, 5000); // Check every 5 seconds
@@ -251,8 +298,9 @@ async function startBatchLauncher() {
     console.log(`   - Success rate: ${((totalSuccessful / totalBotsLaunched) * 100).toFixed(1)}%`);
     
     if (totalBotsLaunched < config.totalBots) {
-      console.log(`\n⏳ Waiting 10 seconds before next batch...`);
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      // Reduced wait time - bots are already ready
+      console.log(`\n⏳ Starting next batch in 3 seconds...`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
     }
   }
   

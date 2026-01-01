@@ -529,9 +529,9 @@ async function joinZoomMeeting() {
     
     console.log(`Meeting validation for ${botName}:`, inMeeting);
     
-    // Wait additional time to ensure stable connection
-    console.log(`⏳ ${botName} waiting additional time to ensure stable connection...`);
-    await new Promise(resolve => setTimeout(resolve, 15000)); // 15 seconds extra wait
+    // Reduced wait time - connection is already stable
+    console.log(`⏳ ${botName} ensuring stable connection...`);
+    await new Promise(resolve => setTimeout(resolve, 5000)); // Reduced to 5 seconds
     
     // Final validation - check if still in meeting
     const finalValidation = await page.evaluate(() => {
@@ -556,8 +556,8 @@ async function joinZoomMeeting() {
       // Keep alive for specified time
       console.log(`⏰ ${botName} will stay in meeting for ${keepAliveMinutes} minutes`);
       
-      // Wait a bit more to ensure we're fully in the meeting
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Minimal wait - already validated
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Reduced to 1 second
       
       // Bot stays in meeting - NO process.exit()
       console.log(`✅ ${botName} successfully joined meeting and will stay for ${keepAliveMinutes} minutes`);
