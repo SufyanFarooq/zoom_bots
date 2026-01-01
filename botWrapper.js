@@ -960,64 +960,51 @@ async function joinZoomMeeting() {
       }
     }
     
-    // Wait for meeting to load (reduced wait time to disable video faster)
+    // Wait for meeting to load (minimal wait for fast execution)
     console.log(`Waiting for meeting interface to load for ${botName}...`);
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Disable video IMMEDIATELY after joining (so icon appears but is crossed/disabled)
-    // This is critical: video must be initialized (so icon appears) but then disabled (so it's crossed)
-    console.log(`🎥 [${botName}] Starting video disable process...`);
+    // FAST & SMART: Single attempt with all methods combined
+    console.log(`🎥 [${botName}] Disabling video (single fast attempt)...`);
     
-    // Try disabling video multiple times with different methods
-    for (let attempt = 1; attempt <= 5; attempt++) {
-      try {
-        console.log(`🎥 [${botName}] Attempt ${attempt}/5 to disable video...`);
+    try {
+      const result = await page.evaluate(async () => {
+        const logs = [];
+        let videoDisabled = false;
+        let clickedButton = null;
         
-        const result = await page.evaluate(async () => {
-          const logs = [];
-          logs.push(`[Browser] Starting video disable attempt...`);
+        // Method 1: Stop all video tracks immediately (PERMANENTLY)
+        try {
+          logs.push(`[Browser] Method 1: Stopping all video tracks permanently...`);
+          const allStreams = [];
           
-          // Method 1: Stop all video tracks immediately
-          try {
-            logs.push(`[Browser] Method 1: Stopping video tracks...`);
-            const allStreams = [];
-            
-            // Get stream from global storage
-            if (window.localStream) {
-              allStreams.push(window.localStream);
-              logs.push(`[Browser] Found window.localStream`);
-            }
-            if (window.fakeVideoStream) {
-              allStreams.push(window.fakeVideoStream);
-              logs.push(`[Browser] Found window.fakeVideoStream`);
-            }
-            
-            // Try to get current stream
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-              try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                allStreams.push(stream);
-                logs.push(`[Browser] Got new stream from getUserMedia`);
-              } catch (e) {
-                logs.push(`[Browser] Could not get new stream: ${e.message}`);
-              }
-            }
-            
-            let totalTracksStopped = 0;
-            allStreams.forEach(stream => {
-              const videoTracks = stream.getVideoTracks();
-              videoTracks.forEach(track => {
-                logs.push(`[Browser] Stopping track: ${track.label}, enabled: ${track.enabled}, readyState: ${track.readyState}`);
-                track.enabled = false;
-                track.stop();
-                totalTracksStopped++;
-              });
-            });
-            
-            logs.push(`[Browser] Stopped ${totalTracksStopped} video track(s)`);
-          } catch (e) {
-            logs.push(`[Browser] Error stopping video tracks: ${e.message}`);
+          // Get stream from global storage (DON'T get new stream - it re-enables video!)
+          if (window.localStream) {
+            allStreams.push(window.localStream);
+            logs.push(`[Browser] Found window.localStream`);
           }
+          if (window.fakeVideoStream) {
+            allStreams.push(window.fakeVideoStream);
+            logs.push(`[Browser] Found window.fakeVideoStream`);
+          }
+          
+          let totalTracksStopped = 0;
+          allStreams.forEach(stream => {
+            const videoTracks = stream.getVideoTracks();
+            videoTracks.forEach(track => {
+              // PERMANENTLY disable and stop
+              track.enabled = false;
+              track.muted = true;
+              track.stop(); // This prevents re-enabling
+              totalTracksStopped++;
+            });
+          });
+          
+          logs.push(`[Browser] Permanently stopped ${totalTracksStopped} video track(s)`);
+        } catch (e) {
+          logs.push(`[Browser] Error stopping video tracks: ${e.message}`);
+        }
           
           // Method 2: Find and click "Stop Video" button - try ALL possible selectors
           logs.push(`[Browser] Method 2: Finding video button in UI...`);
