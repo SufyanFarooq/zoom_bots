@@ -477,33 +477,86 @@ async function joinZoomMeeting() {
     console.log(`🎥 [${botName}] Checking for microphone/camera permission popup...`);
     try {
       const permissionResult = await page.evaluate(() => {
-        // Look for the permission popup
-        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-        const buttonInfo = buttons.map(b => ({
+        // Look for the permission dialog - it has a specific structure
+        // <permission type="camera"> element is the "Use camera" button
+        const permissionDialog = document.querySelector('.pepc-permission-dialog');
+        
+        if (permissionDialog) {
+          console.log(`[Browser] Found permission dialog (.pepc-permission-dialog)`);
+          
+          // PRIORITY 1: Look for <permission type="camera"> element - this is the "Use camera" button
+          const useCameraButton = permissionDialog.querySelector('permission[type="camera"]');
+          if (useCameraButton) {
+            console.log(`[Browser] Found <permission type="camera"> button - clicking to enable video`);
+            useCameraButton.click();
+            return { handled: true, button: 'use_camera_permission', label: 'Use camera (permission element)' };
+          }
+          
+          // PRIORITY 2: Look for button with "Use camera" text inside permission dialog
+          const buttons = Array.from(permissionDialog.querySelectorAll('button, [role="button"], permission'));
+          const useCameraTextButton = buttons.find(btn => {
+            const text = btn.textContent.toLowerCase();
+            const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+            const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
+            return isVisible && (
+              text.includes('use camera') ||
+              text.includes('use microphone and camera') ||
+              text.includes('join with video') ||
+              text.includes('turn on video') ||
+              ariaLabel.includes('use camera') ||
+              ariaLabel.includes('use microphone and camera') ||
+              ariaLabel.includes('join with video'));
+          });
+          
+          if (useCameraTextButton) {
+            const label = useCameraTextButton.getAttribute('aria-label') || useCameraTextButton.textContent;
+            console.log(`[Browser] Found use camera button: "${label}" - clicking to initialize video`);
+            useCameraTextButton.click();
+            return { handled: true, button: 'use_camera_text', label };
+          }
+          
+          // Don't click "Continue without camera" - we want video enabled
+          const footerButton = permissionDialog.querySelector('.pepc-permission-dialog__footer-button');
+          if (footerButton && footerButton.textContent.toLowerCase().includes('continue without')) {
+            console.log(`[Browser] Found "Continue without camera" button - NOT clicking (we want video)`);
+          }
+        }
+        
+        // Fallback: Look for buttons outside permission dialog
+        const allButtons = Array.from(document.querySelectorAll('button, [role="button"], permission'));
+        const buttonInfo = allButtons.map(b => ({
           text: b.textContent,
           ariaLabel: b.getAttribute('aria-label'),
+          tagName: b.tagName,
+          type: b.getAttribute('type'),
           visible: b.offsetWidth > 0 && b.offsetHeight > 0
         }));
         
-        console.log(`[Browser] Found ${buttons.length} buttons after join:`, buttonInfo.filter(b => b.visible).slice(0, 10));
+        console.log(`[Browser] Found ${allButtons.length} total buttons:`, buttonInfo.filter(b => b.visible).slice(0, 15));
         
-        // PRIORITY: Look for "Join with video" or "Use microphone and camera" button
-        // We MUST select this so video icon appears in participant list, then we'll disable video immediately
-        const joinWithVideoButton = buttons.find(btn => {
+        // Look for <permission type="camera"> element anywhere
+        const permissionElement = document.querySelector('permission[type="camera"]');
+        if (permissionElement) {
+          console.log(`[Browser] Found <permission type="camera"> element - clicking to enable video`);
+          permissionElement.click();
+          return { handled: true, button: 'permission_camera', label: 'Use camera (permission element)' };
+        }
+        
+        // Look for "Use camera" or "Join with video" button
+        const joinWithVideoButton = allButtons.find(btn => {
           const text = btn.textContent.toLowerCase();
           const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
           const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
           return isVisible && (
+            text.includes('use camera') ||
             text.includes('use microphone and camera') ||
             text.includes('join with video') ||
             text.includes('turn on video') ||
             text.includes('enable video') ||
-            text.includes('start video') ||
+            ariaLabel.includes('use camera') ||
             ariaLabel.includes('use microphone and camera') ||
             ariaLabel.includes('join with video') ||
-            ariaLabel.includes('turn on video') ||
-            ariaLabel.includes('enable video')
-          );
+            ariaLabel.includes('turn on video'));
         });
         
         if (joinWithVideoButton) {
@@ -513,39 +566,19 @@ async function joinZoomMeeting() {
           return { handled: true, button: 'join_with_video', label };
         }
         
-        // Fallback: Look for "Continue without video" - but this might hide the icon
-        // Only use if "Join with video" is not available
-        const continueWithoutVideoButton = buttons.find(btn => {
-          const text = btn.textContent.toLowerCase();
-          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
-          return isVisible && (
-            text.includes('continue without video') ||
-            text.includes('join without video') ||
-            text.includes('continue without') ||
-            ariaLabel.includes('continue without video') ||
-            ariaLabel.includes('join without video')
-          );
-        });
-        
-        if (continueWithoutVideoButton) {
-          const label = continueWithoutVideoButton.getAttribute('aria-label') || continueWithoutVideoButton.textContent;
-          console.log(`[Browser] Found continue without video button: "${label}" - WARNING: icon might not appear`);
-          continueWithoutVideoButton.click();
-          return { handled: true, button: 'continue_without_video', label };
-        }
-        
-        // Look for "OK" button for floating reactions popup
-        const okButton = buttons.find(btn => {
-          const text = btn.textContent.toLowerCase();
-          const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
-          return isVisible && text.includes('ok') && text.length <= 3;
-        });
-        
-        if (okButton) {
-          console.log(`[Browser] Found OK button for popup`);
-          okButton.click();
-          return { handled: true, button: 'ok', label: 'OK' };
+        // Look for "OK" button for floating reactions popup (only if no permission dialog found)
+        if (!permissionDialog) {
+          const okButton = allButtons.find(btn => {
+            const text = btn.textContent.toLowerCase();
+            const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
+            return isVisible && text.includes('ok') && text.length <= 3;
+          });
+          
+          if (okButton) {
+            console.log(`[Browser] Found OK button for popup`);
+            okButton.click();
+            return { handled: true, button: 'ok', label: 'OK' };
+          }
         }
         
         return { handled: false, button: null, label: null };
