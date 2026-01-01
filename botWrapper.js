@@ -176,6 +176,9 @@ async function joinZoomMeeting() {
         if (constraints && constraints.video) {
           // Return fake video stream - we'll stop it after joining
           const stream = createFakeVideoStream();
+          // Store globally so we can access it later to disable
+          window.localStream = stream;
+          window.fakeVideoStream = stream;
           return stream;
         }
         
