@@ -127,9 +127,35 @@ function launchBot(botName) {
 
   const botProcess = spawn('node', ['botWrapper.js', botName, config.meetingURL, config.passcode], {
     detached: true,
-    stdio: ['ignore', 'pipe', 'pipe'], // Enable stderr to see errors
+    stdio: ['ignore', 'pipe', 'pipe'], // Enable stdout/stderr to see all logs
     env: env,
     cwd: __dirname
+  });
+  
+  // Forward stdout and stderr to parent process so we can see all logs
+  botProcess.stdout.on('data', (data) => {
+    const logLine = data.toString().trim();
+    if (logLine) {
+      // Only log important messages to avoid spam
+      if (logLine.includes('🎥') || logLine.includes('✅') || logLine.includes('❌') || 
+          logLine.includes('Video') || logLine.includes('video') || 
+          logLine.includes('Permission') || logLine.includes('permission') ||
+          logLine.includes('📊') || logLine.includes('⚠️')) {
+        console.log(`[${botName}] ${logLine}`);
+      }
+    }
+  });
+  
+  botProcess.stderr.on('data', (data) => {
+    const logLine = data.toString().trim();
+    if (logLine) {
+      // Log all errors and important stderr messages
+      if (logLine.includes('Error') || logLine.includes('error') || 
+          logLine.includes('Warning') || logLine.includes('warning') ||
+          logLine.includes('🎥') || logLine.includes('✅') || logLine.includes('❌')) {
+        console.error(`[${botName}] ${logLine}`);
+      }
+    }
   });
 
   // Log errors from bot process
