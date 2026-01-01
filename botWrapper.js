@@ -1005,127 +1005,70 @@ async function joinZoomMeeting() {
         } catch (e) {
           logs.push(`[Browser] Error stopping video tracks: ${e.message}`);
         }
-          
-          // Method 2: Find and click "Stop Video" button - try ALL possible selectors
-          logs.push(`[Browser] Method 2: Finding video button in UI...`);
-          const allButtons = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="video"], [data-testid*="camera"], [class*="video"], [class*="camera"]'));
-          logs.push(`[Browser] Found ${allButtons.length} total buttons`);
-          
-          // Log all buttons with video-related text for debugging
-          const videoRelatedButtons = allButtons.filter(btn => {
-            const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-            const text = btn.textContent.toLowerCase();
-            const dataTestId = (btn.getAttribute('data-testid') || '').toLowerCase();
-            const className = btn.className.toLowerCase();
-            return ariaLabel.includes('video') || ariaLabel.includes('camera') ||
-                   text.includes('video') || text.includes('camera') ||
-                   dataTestId.includes('video') || dataTestId.includes('camera') ||
-                   className.includes('video') || className.includes('camera');
-          });
-          
-          logs.push(`[Browser] Found ${videoRelatedButtons.length} video-related buttons`);
-          videoRelatedButtons.forEach((btn, idx) => {
-            logs.push(`[Browser] Video button ${idx + 1}: aria-label="${btn.getAttribute('aria-label')}", text="${btn.textContent.substring(0, 50)}", data-testid="${btn.getAttribute('data-testid')}"`);
-          });
-          
-          // Try multiple selectors for video button
-          const videoButtonSelectors = [
-            // Exact matches for "Stop Video"
-            btn => {
-              const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-              return ariaLabel.includes('stop video') || ariaLabel.includes('turn off video');
-            },
-            // Any video button that says "stop" or "turn off"
-            btn => {
-              const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-              const text = btn.textContent.toLowerCase();
-              return (ariaLabel.includes('video') || ariaLabel.includes('camera')) &&
-                     (ariaLabel.includes('stop') || ariaLabel.includes('turn off') || text.includes('stop'));
-            },
-            // By data-testid
-            btn => {
-              const dataTestId = (btn.getAttribute('data-testid') || '').toLowerCase();
-              return dataTestId.includes('video') && (dataTestId.includes('stop') || dataTestId.includes('off'));
-            },
-            // By class name
-            btn => {
-              const className = btn.className.toLowerCase();
-              return (className.includes('video') || className.includes('camera')) &&
-                     (className.includes('stop') || className.includes('off'));
-            }
-          ];
-          
-          let videoDisabled = false;
-          let clickedButton = null;
-          
-          for (const selector of videoButtonSelectors) {
-            const videoButton = allButtons.find(selector);
-            if (videoButton) {
-              const ariaLabel = videoButton.getAttribute('aria-label') || '';
-              logs.push(`[Browser] Found video button with selector: "${ariaLabel}"`);
-              clickedButton = ariaLabel;
-              videoButton.click();
-              logs.push(`[Browser] Clicked video button`);
-              await new Promise(resolve => setTimeout(resolve, 500));
-              // Click again to ensure it's off
-              videoButton.click();
-              logs.push(`[Browser] Clicked video button again`);
-              videoDisabled = true;
-              break;
-            }
-          }
-          
-          // Method 3: If no "Stop Video" button found, try to find ANY video button and click it
-          if (!videoDisabled) {
-            logs.push(`[Browser] Method 3: Trying to find any video button...`);
-            const anyVideoButton = allButtons.find(btn => {
-              const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-              const text = btn.textContent.toLowerCase();
-              return (ariaLabel.includes('video') || ariaLabel.includes('camera') || text.includes('video')) &&
-                     !ariaLabel.includes('start') && !ariaLabel.includes('turn on') &&
-                     !text.includes('start');
-            });
-            
-            if (anyVideoButton) {
-              const ariaLabel = anyVideoButton.getAttribute('aria-label') || '';
-              logs.push(`[Browser] Found general video button: "${ariaLabel}", clicking to toggle off...`);
-              clickedButton = ariaLabel;
-              anyVideoButton.click();
-              await new Promise(resolve => setTimeout(resolve, 500));
-              anyVideoButton.click(); // Click again
-              logs.push(`[Browser] Clicked general video button twice`);
-              videoDisabled = true;
-            } else {
-              logs.push(`[Browser] No video button found to disable`);
-            }
-          }
-          
-          return { logs, videoDisabled, clickedButton };
+        
+        // Method 2: Find and click "Stop Video" button (FAST - single pass)
+        logs.push(`[Browser] Method 2: Finding and clicking video button...`);
+        const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+        
+        // Priority 1: "Stop Video" button
+        const stopVideoButton = allButtons.find(btn => {
+          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+          return ariaLabel.includes('stop video') || ariaLabel.includes('turn off video') || ariaLabel.includes('stop my video');
         });
         
-        // Log browser console messages
-        if (result && result.logs) {
-          result.logs.forEach(log => console.log(`🎥 [${botName}] ${log}`));
-        }
-        
-        if (result && result.videoDisabled) {
-          console.log(`✅ [${botName}] Video disabled successfully via button: "${result.clickedButton}"`);
+        if (stopVideoButton) {
+          const ariaLabel = stopVideoButton.getAttribute('aria-label') || '';
+          logs.push(`[Browser] Found "Stop Video" button: "${ariaLabel}"`);
+          clickedButton = ariaLabel;
+          stopVideoButton.click();
+          videoDisabled = true;
         } else {
-          console.log(`⚠️ [${botName}] Video button not found or not clicked`);
+          // Priority 2: Any video button (toggle off)
+          const videoButton = allButtons.find(btn => {
+            const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+            const text = btn.textContent.toLowerCase();
+            return (ariaLabel.includes('video') || text.includes('video')) &&
+                   !ariaLabel.includes('start') && !ariaLabel.includes('turn on');
+          });
+          
+          if (videoButton) {
+            const ariaLabel = videoButton.getAttribute('aria-label') || '';
+            logs.push(`[Browser] Found video button: "${ariaLabel}", toggling off...`);
+            clickedButton = ariaLabel;
+            videoButton.click();
+            videoDisabled = true;
+          }
         }
         
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Method 3: Press 'v' key (Zoom shortcut) - do this ALWAYS to ensure video is off
+        logs.push(`[Browser] Method 3: Pressing 'v' key to toggle video off...`);
+        // Dispatch keyboard event
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', bubbles: true }));
+        document.dispatchEvent(new KeyboardEvent('keyup', { key: 'v', code: 'KeyV', bubbles: true }));
         
-        // Method 4: Press 'v' key multiple times (Zoom shortcut to toggle video)
-        console.log(`🎥 [${botName}] Method 4: Pressing 'v' key to toggle video...`);
-        await page.keyboard.press('v');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        await page.keyboard.press('v'); // Press again to ensure it's off
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-      } catch (error) {
-        console.log(`❌ [${botName}] Error in attempt ${attempt} to disable video: ${error.message}`);
+        return { logs, videoDisabled, clickedButton };
+      });
+      
+      // Log important messages only
+      if (result && result.logs) {
+        // Only log important messages to reduce spam
+        result.logs.filter(log => 
+          log.includes('Found') || log.includes('stopped') || log.includes('Permanently') || log.includes('Error')
+        ).forEach(log => console.log(`🎥 [${botName}] ${log}`));
       }
+      
+      if (result && result.videoDisabled) {
+        console.log(`✅ [${botName}] Video disabled successfully via button: "${result.clickedButton || 'keyboard shortcut'}"`);
+      } else {
+        console.log(`✅ [${botName}] Video disabled via keyboard shortcut`);
+      }
+      
+      // Also press 'v' key from Puppeteer side (redundancy for reliability)
+      await page.keyboard.press('v');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+    } catch (error) {
+      console.log(`❌ [${botName}] Error disabling video: ${error.message}`);
     }
     
     // Handle any additional popups that might appear
