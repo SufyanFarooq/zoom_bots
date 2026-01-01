@@ -131,22 +131,44 @@ async function joinZoomMeeting() {
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
 
-    // Set permissions to deny microphone and camera
+    // Set permissions: Allow video, deny audio (muted)
     const context = browser.defaultBrowserContext();
-    await context.overridePermissions('https://zoom.us', []);
-    await context.overridePermissions('https://app.zoom.us', []);
+    // Allow camera (video) but not microphone (audio)
+    await context.overridePermissions('https://zoom.us', ['camera']);
+    await context.overridePermissions('https://app.zoom.us', ['camera']);
     
-    // Override getUserMedia to deny permissions
+    // Override getUserMedia: Allow video, deny audio
     await page.evaluateOnNewDocument(() => {
-      // Override getUserMedia to deny video and audio
-      navigator.mediaDevices.getUserMedia = async () => {
-        throw new Error('Permission denied');
+      const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      
+      // Override getUserMedia to allow video but deny audio
+      navigator.mediaDevices.getUserMedia = async (constraints) => {
+        // If requesting audio, deny it
+        if (constraints && constraints.audio) {
+          constraints.audio = false;
+        }
+        // Allow video
+        if (constraints && constraints.video) {
+          return originalGetUserMedia({ video: constraints.video, audio: false });
+        }
+        // If only audio requested, deny
+        if (constraints && !constraints.video) {
+          throw new Error('Audio permission denied');
+        }
+        return originalGetUserMedia(constraints);
       };
       
-      // Override permissions API
+      // Override permissions API - allow camera, deny microphone
       if (navigator.permissions) {
-        navigator.permissions.query = async () => {
-          return { state: 'denied' };
+        const originalQuery = navigator.permissions.query.bind(navigator.permissions);
+        navigator.permissions.query = async (permissionDesc) => {
+          if (permissionDesc.name === 'camera') {
+            return { state: 'granted' };
+          }
+          if (permissionDesc.name === 'microphone') {
+            return { state: 'denied' };
+          }
+          return originalQuery(permissionDesc);
         };
       }
     });

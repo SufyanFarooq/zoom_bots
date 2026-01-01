@@ -74,22 +74,27 @@ let totalSuccessful = 0;
 let currentBatchNumber = 0;
 let currentBatchBots = [];
 
-// Generate realistic Pakistani names
+// Generate realistic Indian names (no underscores, no numbers)
 function generateRealName() {
   const firstNames = [
-    'Ali', 'Ahmed', 'Hassan', 'Hussain', 'Omar', 'Usman', 'Zain', 'Bilal', 'Hamza', 'Kashif',
-    'Ayesha', 'Fatima', 'Zara', 'Sara', 'Mariam', 'Hira', 'Sana', 'Laila', 'Amna', 'Rabia'
+    'Raj', 'Amit', 'Rahul', 'Priya', 'Anjali', 'Vikram', 'Sneha', 'Arjun', 'Kavya', 'Rohan',
+    'Neha', 'Siddharth', 'Pooja', 'Aditya', 'Divya', 'Karan', 'Meera', 'Ravi', 'Shreya', 'Vivek',
+    'Ananya', 'Rohan', 'Isha', 'Kunal', 'Tanvi', 'Manish', 'Sakshi', 'Nikhil', 'Aishwarya', 'Rohit',
+    'Kritika', 'Abhishek', 'Swati', 'Varun', 'Jyoti', 'Saurabh', 'Richa', 'Harsh', 'Pallavi', 'Yash',
+    'Deepika', 'Akash', 'Nisha', 'Rishabh', 'Shruti', 'Mohit', 'Ankita', 'Gaurav', 'Preeti', 'Sagar'
   ];
   
   const lastNames = [
-    'Khan', 'Ahmed', 'Ali', 'Hassan', 'Hussain', 'Malik', 'Raza', 'Shah', 'Farooq', 'Iqbal'
+    'Sharma', 'Patel', 'Kumar', 'Singh', 'Gupta', 'Verma', 'Yadav', 'Shah', 'Mehta', 'Joshi',
+    'Reddy', 'Rao', 'Malhotra', 'Agarwal', 'Kapoor', 'Chopra', 'Bansal', 'Goyal', 'Arora', 'Saxena',
+    'Tiwari', 'Mishra', 'Pandey', 'Jain', 'Nair', 'Iyer', 'Menon', 'Narayan', 'Krishnan', 'Raman'
   ];
   
   const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
   const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
-  const randomNumber = Math.floor(Math.random() * 9999) + 1000;
   
-  return `${firstName}_${lastName}_${randomNumber}`;
+  // Return proper Indian name format: First Last (no underscores, no numbers)
+  return `${firstName} ${lastName}`;
 }
 
 // Launch a single bot

@@ -17,25 +17,27 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Function to generate real user names
+// Function to generate real Indian names (no underscores, no numbers)
 function generateRealName() {
   const firstNames = [
-    'Ali', 'Sara', 'Omar', 'Ayesha', 'Zain', 'Fatima', 'Usman', 'Hira', 'Bilal', 'Mina',
-    'Hamza', 'Noor', 'Danish', 'Iqra', 'Saad', 'Sana', 'Raza', 'Mariam', 'Tariq', 'Laila',
-    'Ahmed', 'Zara', 'Hassan', 'Aisha', 'Yusuf', 'Khadija', 'Ibrahim', 'Maryam', 'Khalid', 'Amina',
-    'Abdullah', 'Fatima', 'Muhammad', 'Zainab', 'Yasin', 'Hafsa', 'Mustafa', 'Ayesha', 'Junaid', 'Sadia'
+    'Raj', 'Amit', 'Rahul', 'Priya', 'Anjali', 'Vikram', 'Sneha', 'Arjun', 'Kavya', 'Rohan',
+    'Neha', 'Siddharth', 'Pooja', 'Aditya', 'Divya', 'Karan', 'Meera', 'Ravi', 'Shreya', 'Vivek',
+    'Ananya', 'Rohan', 'Isha', 'Kunal', 'Tanvi', 'Manish', 'Sakshi', 'Nikhil', 'Aishwarya', 'Rohit',
+    'Kritika', 'Abhishek', 'Swati', 'Varun', 'Jyoti', 'Saurabh', 'Richa', 'Harsh', 'Pallavi', 'Yash',
+    'Deepika', 'Akash', 'Nisha', 'Rishabh', 'Shruti', 'Mohit', 'Ankita', 'Gaurav', 'Preeti', 'Sagar'
   ];
   
   const lastNames = [
-    'Khan', 'Ahmed', 'Ali', 'Hassan', 'Hussain', 'Malik', 'Raza', 'Shah', 'Farooq', 'Iqbal',
-    'Saleem', 'Rashid', 'Nadeem', 'Saeed', 'Waqar', 'Tariq', 'Usman', 'Bilal', 'Danish', 'Saad'
+    'Sharma', 'Patel', 'Kumar', 'Singh', 'Gupta', 'Verma', 'Yadav', 'Shah', 'Mehta', 'Joshi',
+    'Reddy', 'Rao', 'Malhotra', 'Agarwal', 'Kapoor', 'Chopra', 'Bansal', 'Goyal', 'Arora', 'Saxena',
+    'Tiwari', 'Mishra', 'Pandey', 'Jain', 'Nair', 'Iyer', 'Menon', 'Narayan', 'Krishnan', 'Raman'
   ];
   
   const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
   const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
-  const randomNumber = Math.floor(Math.random() * 9999) + 1000;
   
-  return `${firstName}_${lastName}_${randomNumber}`;
+  // Return proper Indian name format: First Last (no underscores, no numbers)
+  return `${firstName} ${lastName}`;
 }
 
 // Health check endpoint
