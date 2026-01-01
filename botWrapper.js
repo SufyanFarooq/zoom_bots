@@ -477,25 +477,31 @@ async function joinZoomMeeting() {
     // Try multiple times with increasing wait times to catch the permission dialog
     console.log(`🎥 [${botName}] Checking for microphone/camera permission popup...`);
     
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    // Wait a bit for permission dialog to appear
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    for (let attempt = 1; attempt <= 5; attempt++) {
       try {
-        // Wait a bit longer for permission dialog to appear (1s, 3s, 5s)
+        // Wait longer for permission dialog to appear (2s, 4s, 6s, 8s, 10s)
         if (attempt > 1) {
-          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
-        } else {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
         
         const permissionResult = await page.evaluate(() => {
-        // Look for the permission dialog - it has a specific structure
-        // <permission type="camera"> element is the "Use camera" button
-        const permissionDialog = document.querySelector('.pepc-permission-dialog');
-        
-        if (permissionDialog) {
-          console.log(`[Browser] Found permission dialog (.pepc-permission-dialog)`);
+          // Look for the permission dialog - it has a specific structure
+          // <permission type="camera"> element is the "Use camera" button
+          const permissionDialog = document.querySelector('.pepc-permission-dialog');
           
-          // PRIORITY 1: Look for <permission type="camera"> element - this is the "Use camera" button
-          const useCameraButton = permissionDialog.querySelector('permission[type="camera"]');
+          // Also try alternative selectors
+          const altDialog1 = document.querySelector('[class*="permission-dialog"]');
+          const altDialog2 = document.querySelector('[class*="permission"]');
+          const permissionDialogElement = permissionDialog || altDialog1 || altDialog2;
+        
+          if (permissionDialogElement) {
+            console.log(`[Browser] Found permission dialog (selector: ${permissionDialog ? '.pepc-permission-dialog' : 'alternative'})`);
+            
+            // PRIORITY 1: Look for <permission type="camera"> element - this is the "Use camera" button
+            const useCameraButton = permissionDialogElement.querySelector('permission[type="camera"]');
           if (useCameraButton) {
             const isVisible = useCameraButton.offsetWidth > 0 && useCameraButton.offsetHeight > 0;
             console.log(`[Browser] Found <permission type="camera"> button, visible: ${isVisible}`);
@@ -508,7 +514,7 @@ async function joinZoomMeeting() {
             }
           } else {
             // Log all permission elements found
-            const allPermissionElements = permissionDialog.querySelectorAll('permission');
+            const allPermissionElements = permissionDialogElement.querySelectorAll('permission');
             console.log(`[Browser] Found ${allPermissionElements.length} permission elements in dialog`);
             allPermissionElements.forEach((perm, idx) => {
               console.log(`[Browser] Permission element ${idx + 1}: type="${perm.getAttribute('type')}", visible=${perm.offsetWidth > 0 && perm.offsetHeight > 0}`);
@@ -529,7 +535,7 @@ async function joinZoomMeeting() {
           }
           
           // PRIORITY 2: Look for button with "Use camera" text inside permission dialog
-          const buttons = Array.from(permissionDialog.querySelectorAll('button, [role="button"], permission'));
+          const buttons = Array.from(permissionDialogElement.querySelectorAll('button, [role="button"], permission'));
           const useCameraTextButton = buttons.find(btn => {
             const text = btn.textContent.toLowerCase();
             const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
@@ -552,10 +558,13 @@ async function joinZoomMeeting() {
           }
           
           // Don't click "Continue without camera" - we want video enabled
-          const footerButton = permissionDialog.querySelector('.pepc-permission-dialog__footer-button');
+          const footerButton = permissionDialogElement.querySelector('.pepc-permission-dialog__footer-button') ||
+                              permissionDialogElement.querySelector('[class*="footer-button"]');
           if (footerButton && footerButton.textContent.toLowerCase().includes('continue without')) {
             console.log(`[Browser] Found "Continue without camera" button - NOT clicking (we want video)`);
           }
+        } else {
+          console.log(`[Browser] Permission dialog NOT found - checking for permission elements anywhere...`);
         }
         
         // Fallback: Look for buttons outside permission dialog
@@ -608,7 +617,11 @@ async function joinZoomMeeting() {
         }
         
         // Look for "OK" button for floating reactions popup (only if no permission dialog found)
-        if (!permissionDialog) {
+        // BUT DON'T click OK if we haven't clicked the camera permission yet
+        const permissionDialogCheck = document.querySelector('.pepc-permission-dialog') ||
+                                     document.querySelector('[class*="permission-dialog"]') ||
+                                     document.querySelector('[class*="permission"]');
+        if (!permissionDialogCheck) {
           const okButton = allButtons.find(btn => {
             const text = btn.textContent.toLowerCase();
             const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
@@ -629,8 +642,13 @@ async function joinZoomMeeting() {
           console.log(`🎥 [${botName}] Permission popup handled (attempt ${attempt}): ${permissionResult.button} - "${permissionResult.label}"`);
           if (permissionResult.button === 'ok') {
             console.log(`⚠️ [${botName}] WARNING: Only "OK" button clicked - video might not initialize!`);
+            // Don't break, continue trying to find permission dialog
           } else if (permissionResult.button === 'use_camera_permission' || permissionResult.button === 'permission_camera') {
             console.log(`✅ [${botName}] Successfully clicked permission[type="camera"] - video should initialize!`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            break; // Success, exit loop
+          } else if (permissionResult.button === 'join_with_video' || permissionResult.button === 'use_camera_text') {
+            console.log(`✅ [${botName}] Successfully clicked video button - video should initialize!`);
             await new Promise(resolve => setTimeout(resolve, 3000));
             break; // Success, exit loop
           }
@@ -639,10 +657,10 @@ async function joinZoomMeeting() {
           }
           await new Promise(resolve => setTimeout(resolve, 2000));
         } else {
-          if (attempt < 3) {
-            console.log(`⚠️ [${botName}] Permission popup not found (attempt ${attempt}/3), retrying...`);
+          if (attempt < 5) {
+            console.log(`⚠️ [${botName}] Permission popup not found (attempt ${attempt}/5), retrying...`);
           } else {
-            console.log(`⚠️ [${botName}] No permission popup found after 3 attempts - video might not initialize`);
+            console.log(`⚠️ [${botName}] No permission popup found after 5 attempts - video might not initialize`);
           }
         }
       } catch (error) {
