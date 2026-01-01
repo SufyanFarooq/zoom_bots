@@ -51,13 +51,14 @@ async function getResourceReport() {
     console.log(`   Disk Available: ${diskParts[3]}\n`);
 
     // Per bot detailed stats
+    let totalCpu = 0;
+    let totalMem = 0;
+    let totalRss = 0;
+    
     if (botCount > 0) {
       console.log('📈 Per Bot Resource Usage:\n');
       
       const botLines = botProcesses.trim().split('\n');
-      let totalCpu = 0;
-      let totalMem = 0;
-      let totalRss = 0;
 
       botLines.forEach((line, index) => {
         if (!line) return;
@@ -130,7 +131,7 @@ async function getResourceReport() {
     }
 
     // Scaling estimates
-    if (botCount > 0) {
+    if (botCount > 0 && totalCpu > 0) {
       const avgCpu = totalCpu / botCount;
       const avgMem = totalMem / botCount;
       const avgRss = totalRss / botCount;
