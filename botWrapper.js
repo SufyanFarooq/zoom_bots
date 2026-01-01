@@ -272,8 +272,17 @@ async function joinZoomMeeting() {
         return stream;
       }
       
-      // Store the original getUserMedia
-      const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      // CRITICAL: Create navigator.mediaDevices if it doesn't exist (headless mode issue)
+      if (!navigator.mediaDevices) {
+        console.log(`[Browser] navigator.mediaDevices is undefined - creating it`);
+        navigator.mediaDevices = {};
+      }
+      
+      // Store the original getUserMedia if it exists, otherwise create a placeholder
+      let originalGetUserMedia = null;
+      if (navigator.mediaDevices.getUserMedia) {
+        originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      }
       
       // Override getUserMedia: ALWAYS provide video (so icon appears), deny audio
       navigator.mediaDevices.getUserMedia = async (constraints) => {
@@ -864,9 +873,9 @@ async function joinZoomMeeting() {
           });
           
           if (okButton) {
-            console.log(`[Browser] Found OK button for popup (no permission dialog found, attempt ${attempt})`);
+            console.log(`[Browser] Found OK button for popup (no permission dialog found, attempt ${attemptNum})`);
             // Only click OK on later attempts (after we've given permission dialog time to appear)
-            if (attempt >= 3) {
+            if (attemptNum >= 3) {
               okButton.click();
               return { handled: true, button: 'ok', label: 'OK' };
             } else {
@@ -883,7 +892,7 @@ async function joinZoomMeeting() {
         }
         
         return { handled: false, button: null, label: null };
-      });
+        }, attempt);
       
         if (permissionResult && permissionResult.handled) {
           console.log(`🎥 [${botName}] Permission popup handled (attempt ${attempt}): ${permissionResult.button} - "${permissionResult.label}"`);
