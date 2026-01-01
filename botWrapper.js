@@ -137,28 +137,75 @@ async function joinZoomMeeting() {
     await context.overridePermissions('https://zoom.us', ['camera']);
     await context.overridePermissions('https://app.zoom.us', ['camera']);
     
-    // Override getUserMedia: Allow video, deny audio
+    // Override getUserMedia: Always provide video (fake if needed), deny audio
     await page.evaluateOnNewDocument(() => {
-      const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      // Create a fake video stream that Zoom will recognize
+      function createFakeVideoStream() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw a simple pattern (black background)
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Add some text to make it look like a video
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Video', canvas.width / 2, canvas.height / 2);
+        
+        // Capture stream at 30fps
+        const stream = canvas.captureStream(30);
+        
+        // Ensure video track has proper properties
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          videoTrack.enabled = true;
+          // Set constraints to make it look like a real camera
+          Object.defineProperty(videoTrack, 'label', { value: 'Fake Video Device', writable: false });
+          Object.defineProperty(videoTrack, 'kind', { value: 'video', writable: false });
+        }
+        
+        return stream;
+      }
       
-      // Override getUserMedia to allow video but deny audio
+      // Override getUserMedia to always provide video (fake), deny audio
       navigator.mediaDevices.getUserMedia = async (constraints) => {
-        // If requesting audio, deny it
+        // Always deny audio
         if (constraints && constraints.audio) {
           constraints.audio = false;
         }
-        // Allow video
+        
+        // If video is requested, always provide it (fake stream)
         if (constraints && constraints.video) {
-          return originalGetUserMedia({ video: constraints.video, audio: false });
+          // Always return fake video stream (works in headless mode)
+          const stream = createFakeVideoStream();
+          
+          // If audio was also requested, add empty audio track (muted)
+          if (constraints.audio) {
+            // Create silent audio track
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            gainNode.gain.value = 0; // Muted
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.start();
+            
+            const audioStream = audioContext.createMediaStreamDestination();
+            stream.addTrack(audioStream.stream.getAudioTracks()[0]);
+          }
+          
+          return stream;
         }
+        
         // If only audio requested, deny
-        if (constraints && !constraints.video) {
-          throw new Error('Audio permission denied');
-        }
-        return originalGetUserMedia(constraints);
+        throw new Error('Audio permission denied');
       };
       
-      // Override permissions API - allow camera, deny microphone
+      // Override permissions API - always allow camera, deny microphone
       if (navigator.permissions) {
         const originalQuery = navigator.permissions.query.bind(navigator.permissions);
         navigator.permissions.query = async (permissionDesc) => {
@@ -169,6 +216,25 @@ async function joinZoomMeeting() {
             return { state: 'denied' };
           }
           return originalQuery(permissionDesc);
+        };
+      }
+      
+      // Also override mediaDevices.enumerateDevices to show video device
+      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        const originalEnumerate = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+        navigator.mediaDevices.enumerateDevices = async () => {
+          const devices = await originalEnumerate();
+          // Ensure video device is listed
+          const hasVideo = devices.some(d => d.kind === 'videoinput');
+          if (!hasVideo) {
+            devices.push({
+              deviceId: 'fake-video-device',
+              kind: 'videoinput',
+              label: 'Fake Video Device',
+              groupId: 'fake-group'
+            });
+          }
+          return devices;
         };
       }
     });
