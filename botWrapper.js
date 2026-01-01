@@ -458,37 +458,69 @@ async function joinZoomMeeting() {
     }
     
     // Wait for meeting to load (minimal wait for speed)
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Handle permission popup and disable video IMMEDIATELY
-    try {
-      await page.evaluate(() => {
-        // Priority 1: Click "Use camera" or "Join with video" to initialize video icon
-        const buttons = Array.from(document.querySelectorAll('button, permission'));
-        const useCameraButton = buttons.find(btn => {
-          const text = (btn.textContent || '').toLowerCase();
-          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          const type = btn.getAttribute('type');
-          return (type === 'camera') ||
-                 text.includes('use camera') || text.includes('join with video') ||
-                 ariaLabel.includes('use camera') || ariaLabel.includes('join with video');
-        });
+    // Handle permission popup: Click "Use camera" to initialize video, then disable it
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const result = await page.evaluate((attemptNum) => {
+          // Priority 1: Click "Use camera" or "Join with video" to initialize video icon
+          const permissionDialog = document.querySelector('.pepc-permission-dialog') || 
+                                  document.querySelector('[class*="permission-dialog"]');
+          
+          if (permissionDialog) {
+            // Look for <permission type="camera"> element
+            const useCameraButton = permissionDialog.querySelector('permission[type="camera"]') ||
+                                   Array.from(permissionDialog.querySelectorAll('button')).find(btn => {
+                                     const text = (btn.textContent || '').toLowerCase();
+                                     const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                                     return text.includes('use camera') || text.includes('join with video') ||
+                                            ariaLabel.includes('use camera') || ariaLabel.includes('join with video');
+                                   });
+            
+            if (useCameraButton) {
+              useCameraButton.click();
+              return { handled: true, action: 'use_camera_clicked' };
+            }
+          }
+          
+          // Fallback: Look for permission element anywhere
+          const permissionElement = document.querySelector('permission[type="camera"]');
+          if (permissionElement) {
+            permissionElement.click();
+            return { handled: true, action: 'permission_element_clicked' };
+          }
+          
+          return { handled: false, action: null };
+        }, attempt);
         
-        if (useCameraButton) {
-          useCameraButton.click();
+        if (result && result.handled) {
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for video to initialize
+          break;
         }
         
-        // Priority 2: Immediately disable video track if stream exists
+        if (attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (e) {
+        // Continue
+      }
+    }
+    
+    // NOW disable video immediately after it's initialized
+    try {
+      await page.evaluate(() => {
+        // Disable video track
         if (window.localStream || window.fakeVideoStream) {
           const stream = window.localStream || window.fakeVideoStream;
           stream.getVideoTracks().forEach(track => {
             track.enabled = false;
             track.muted = true;
-            track.stop();
           });
         }
         
-        // Priority 3: Click "Stop Video" button if available
+        // Click "Stop Video" button
+        const buttons = Array.from(document.querySelectorAll('button'));
         const stopVideoButton = buttons.find(btn => {
           const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
           return ariaLabel.includes('stop video') || ariaLabel.includes('turn off video');
@@ -498,16 +530,14 @@ async function joinZoomMeeting() {
           stopVideoButton.click();
         }
         
-        // Priority 4: Press 'v' key to toggle video off
+        // Press 'v' key
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', bubbles: true }));
       });
       
-      // Also press 'v' from Puppeteer side
       await page.keyboard.press('v');
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      await new Promise(resolve => setTimeout(resolve, 300));
     } catch (error) {
-      // Silent fail - continue
+      // Silent fail
     }
     
     // Handle any additional popups that might appear
