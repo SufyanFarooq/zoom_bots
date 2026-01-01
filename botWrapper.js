@@ -78,13 +78,8 @@ async function joinZoomMeeting() {
 
     // Enhanced launch options for Docker environment
     const launchOptions = {
-<<<<<<< HEAD
       headless: true,
-      executablePath: chromePath,
-=======
-      headless: true, // Keep visible for debugging
-      executablePath: getChromeExecutablePath(),
->>>>>>> 0acb7224ecc9c74cce704addc6382b984bf2a79f
+      executablePath: chromePath || getChromeExecutablePath(),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
