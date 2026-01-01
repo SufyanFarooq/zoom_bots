@@ -474,7 +474,7 @@ async function joinZoomMeeting() {
     // Wait a bit more to ensure we're actually in the meeting
     await new Promise(resolve => setTimeout(resolve, 5000));
     
-    // Handle microphone and camera permission popup - SELECT "Continue without video/audio"
+    // Handle microphone and camera permission popup - SELECT "Join with video" then disable it
     console.log(`Checking for microphone/camera permission popup for ${botName}...`);
     try {
       const permissionHandled = await page.evaluate(() => {
@@ -482,22 +482,21 @@ async function joinZoomMeeting() {
         const buttons = Array.from(document.querySelectorAll('button'));
         console.log('Found buttons after join:', buttons.map(b => b.textContent));
         
-        // PRIORITY: Look for "Continue without microphone and camera" button
-        // This will make both video and mic icons show as disabled/crossed
-        const continueWithoutButton = buttons.find(btn => {
+        // PRIORITY: Look for "Join with video" or "Use microphone and camera" button
+        // We'll accept video so the icon appears, then disable it
+        const joinWithVideoButton = buttons.find(btn => {
           const text = btn.textContent.toLowerCase();
           const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          return (text.includes('continue without microphone') ||
-                  text.includes('continue without camera') ||
-                  text.includes('join without audio') ||
-                  text.includes('join without video') ||
-                  text.includes('continue without') ||
-                  ariaLabel.includes('continue without'));
+          return (text.includes('use microphone and camera') ||
+                  text.includes('join with video') ||
+                  text.includes('turn on video') ||
+                  ariaLabel.includes('use microphone and camera') ||
+                  ariaLabel.includes('join with video'));
         });
         
-        if (continueWithoutButton) {
-          console.log('Found continue without button - clicking to keep video/mic disabled');
-          continueWithoutButton.click();
+        if (joinWithVideoButton) {
+          console.log('Found join with video button - clicking to initialize video (will disable later)');
+          joinWithVideoButton.click();
           return true;
         }
         
@@ -517,7 +516,7 @@ async function joinZoomMeeting() {
       });
       
       if (permissionHandled) {
-        console.log(`Permission popup handled for ${botName} - video and mic will be disabled`);
+        console.log(`Permission popup handled for ${botName} - video will be initialized then disabled`);
         await new Promise(resolve => setTimeout(resolve, 3000));
       } else {
         console.log(`No permission popup found for ${botName}`);
@@ -708,11 +707,29 @@ async function joinZoomMeeting() {
             }
           }
           
-          // Keep video DISABLED - don't enable it
+          // Keep video DISABLED - ensure it stays off
           // Video icon should remain disabled/crossed like mic icon
           await page.evaluate(() => {
-            // Ensure video stays disabled - don't enable it
-            // Both video and mic should show as disabled/crossed
+            // Ensure video stays disabled
+            // Disable any video tracks that might have been enabled
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+              // Check if there are any active video tracks and disable them
+              const videoButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+              const videoButton = videoButtons.find(btn => {
+                const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                return (ariaLabel.includes('video') || ariaLabel.includes('camera')) &&
+                       !ariaLabel.includes('stop') && !ariaLabel.includes('turn off');
+              });
+              
+              // If video button shows video is on, turn it off
+              if (videoButton) {
+                const isVideoOn = videoButton.getAttribute('aria-label')?.toLowerCase().includes('stop') ||
+                                 videoButton.getAttribute('aria-label')?.toLowerCase().includes('turn off');
+                if (isVideoOn) {
+                  videoButton.click();
+                }
+              }
+            }
           });
           
         } catch (error) {
