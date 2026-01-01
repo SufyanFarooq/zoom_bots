@@ -537,9 +537,14 @@ async function joinZoomMeeting() {
         // Look for <permission type="camera"> element anywhere
         const permissionElement = document.querySelector('permission[type="camera"]');
         if (permissionElement) {
-          console.log(`[Browser] Found <permission type="camera"> element - clicking to enable video`);
-          permissionElement.click();
-          return { handled: true, button: 'permission_camera', label: 'Use camera (permission element)' };
+          const isVisible = permissionElement.offsetWidth > 0 && permissionElement.offsetHeight > 0;
+          console.log(`[Browser] Found <permission type="camera"> element anywhere, visible: ${isVisible}`);
+          if (isVisible) {
+            console.log(`[Browser] Clicking <permission type="camera"> element to enable video`);
+            permissionElement.click();
+            permissionElement.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            return { handled: true, button: 'permission_camera', label: 'Use camera (permission element)' };
+          }
         }
         
         // Look for "Use camera" or "Join with video" button
