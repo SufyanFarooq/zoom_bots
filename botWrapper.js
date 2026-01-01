@@ -749,27 +749,38 @@ async function joinZoomMeeting() {
             }
           }
           
-          // Keep video DISABLED - ensure it stays off
+          // Keep video DISABLED - ensure it stays off and icon remains visible
           // Video icon should remain disabled/crossed like mic icon
           await page.evaluate(() => {
-            // Ensure video stays disabled
-            // Disable any video tracks that might have been enabled
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-              // Check if there are any active video tracks and disable them
-              const videoButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
-              const videoButton = videoButtons.find(btn => {
-                const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-                return (ariaLabel.includes('video') || ariaLabel.includes('camera')) &&
-                       !ariaLabel.includes('stop') && !ariaLabel.includes('turn off');
-              });
-              
-              // If video button shows video is on, turn it off
-              if (videoButton) {
-                const isVideoOn = videoButton.getAttribute('aria-label')?.toLowerCase().includes('stop') ||
-                                 videoButton.getAttribute('aria-label')?.toLowerCase().includes('turn off');
-                if (isVideoOn) {
-                  videoButton.click();
-                }
+            // Method 1: Stop any active video tracks
+            try {
+              if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+                  .then(stream => {
+                    stream.getVideoTracks().forEach(track => {
+                      track.enabled = false;
+                      track.stop();
+                    });
+                  })
+                  .catch(() => {});
+              }
+            } catch (e) {}
+            
+            // Method 2: Check video button and ensure it's off
+            const videoButtons = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="video"]'));
+            const videoButton = videoButtons.find(btn => {
+              const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+              const dataTestId = (btn.getAttribute('data-testid') || '').toLowerCase();
+              return (ariaLabel.includes('video') || ariaLabel.includes('camera') || dataTestId.includes('video')) &&
+                     !ariaLabel.includes('start') && !ariaLabel.includes('turn on');
+            });
+            
+            // If video button shows video is on (says "Stop Video"), turn it off
+            if (videoButton) {
+              const ariaLabel = (videoButton.getAttribute('aria-label') || '').toLowerCase();
+              const isVideoOn = ariaLabel.includes('stop') || ariaLabel.includes('turn off');
+              if (isVideoOn) {
+                videoButton.click();
               }
             }
           });
