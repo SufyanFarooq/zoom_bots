@@ -1,15 +1,8 @@
 import puppeteer from 'puppeteer-core';
 import fs from 'fs';
-import dotenv from 'dotenv';
-
-// Load environment variables from .env file
-dotenv.config();
 
 function getChromeExecutablePath() {
-  // Check multiple environment variable names
-  const envPath = (process.env.CHROME_PATH || 
-                   process.env.PUPPETEER_EXECUTABLE_PATH || 
-                   process.env.CHROMIUM_PATH || '').trim();
+  const envPath = (process.env.CHROME_PATH || '').trim();
   if (envPath) return envPath;
 
   const candidates = [];
@@ -49,10 +42,8 @@ async function joinZoomMeeting() {
   let browser;
   
   try {
-    // Detect Chrome executable path - check multiple environment variable names
-    let chromePath = process.env.CHROME_PATH || 
-                     process.env.PUPPETEER_EXECUTABLE_PATH || 
-                     process.env.CHROMIUM_PATH;
+    // Detect Chrome executable path
+    let chromePath = process.env.CHROME_PATH;
     if (!chromePath) {
       // Try different possible Chrome paths (macOS first)
       const possiblePaths = [
@@ -83,12 +74,17 @@ async function joinZoomMeeting() {
       }
     }
 
-    console.log(`🔍 Using Chrome path: ${chromePath}`);
+    // Chrome path detected (no log for performance)
 
     // Enhanced launch options for Docker environment
     const launchOptions = {
+<<<<<<< HEAD
       headless: true,
-      executablePath: chromePath || getChromeExecutablePath(),
+      executablePath: chromePath,
+=======
+      headless: true, // Keep visible for debugging
+      executablePath: getChromeExecutablePath(),
+>>>>>>> 0acb7224ecc9c74cce704addc6382b984bf2a79f
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -140,225 +136,59 @@ async function joinZoomMeeting() {
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
 
-    // ========== BROWSER DETECTION & LOGGING ==========
-    console.log(`\n🔍 ========== BROWSER DETECTION [${botName}] ==========`);
-    
-    // Get browser version
-    try {
-      const browserVersion = await browser.version();
-      console.log(`🌐 Browser Version: ${browserVersion}`);
-    } catch (e) {
-      console.log(`⚠️ Could not get browser version: ${e.message}`);
-    }
-    
-    // Get Chrome executable path info
-    try {
-      const { execSync } = await import('child_process');
-      const detectedChromePath = chromePath || getChromeExecutablePath();
-      console.log(`📍 Chrome Executable: ${detectedChromePath}`);
-      
-      // Get Chrome version from command line (handle spaces in path)
-      try {
-        const chromeVersion = execSync(`"${detectedChromePath}" --version`, { encoding: 'utf-8', timeout: 5000 }).trim();
-        console.log(`🔧 Chrome CLI Version: ${chromeVersion}`);
-      } catch (e) {
-        // Try without quotes if path has no spaces
-        try {
-          const chromeVersion = execSync(`${detectedChromePath} --version`, { encoding: 'utf-8', timeout: 5000 }).trim();
-          console.log(`🔧 Chrome CLI Version: ${chromeVersion}`);
-        } catch (e2) {
-          console.log(`⚠️ Could not get Chrome CLI version: ${e2.message}`);
-        }
-      }
-    } catch (e) {
-      console.log(`⚠️ Could not get Chrome path info: ${e.message}`);
-    }
-    
-    // Get user agent
-    try {
-      const userAgent = await page.evaluate(() => navigator.userAgent);
-      console.log(`👤 User Agent: ${userAgent}`);
-    } catch (e) {
-      console.log(`⚠️ Could not get user agent: ${e.message}`);
-    }
-    
-    // Get platform info
-    try {
-      const platformInfo = await page.evaluate(() => ({
-        platform: navigator.platform,
-        vendor: navigator.vendor,
-        language: navigator.language,
-        languages: navigator.languages,
-        hardwareConcurrency: navigator.hardwareConcurrency,
-        deviceMemory: navigator.deviceMemory || 'N/A',
-        maxTouchPoints: navigator.maxTouchPoints || 0
-      }));
-      console.log(`💻 Platform Info:`, JSON.stringify(platformInfo, null, 2));
-    } catch (e) {
-      console.log(`⚠️ Could not get platform info: ${e.message}`);
-    }
-    
-    // Check browser capabilities
-    try {
-      const capabilities = await page.evaluate(() => ({
-        hasMediaDevices: !!navigator.mediaDevices,
-        hasGetUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
-        hasPermissions: !!navigator.permissions,
-        hasWebRTC: !!(window.RTCPeerConnection || window.webkitRTCPeerConnection),
-        isHeadless: navigator.webdriver || false,
-        webdriver: navigator.webdriver || false
-      }));
-      console.log(`🔧 Browser Capabilities:`, JSON.stringify(capabilities, null, 2));
-    } catch (e) {
-      console.log(`⚠️ Could not get browser capabilities: ${e.message}`);
-    }
-    
-    // Check if headless
-    try {
-      const isHeadless = await page.evaluate(() => {
-        return navigator.webdriver || 
-               !window.chrome || 
-               window.chrome.runtime === undefined ||
-               navigator.plugins.length === 0;
-      });
-      console.log(`🎭 Headless Mode: ${isHeadless ? 'YES (Detected)' : 'NO (Not detected)'}`);
-      console.log(`🎭 Launch Option Headless: ${launchOptions.headless}`);
-    } catch (e) {
-      console.log(`⚠️ Could not detect headless mode: ${e.message}`);
-    }
-    
-    // Get viewport info
-    try {
-      const viewport = page.viewport();
-      console.log(`📐 Viewport: ${JSON.stringify(viewport)}`);
-    } catch (e) {
-      console.log(`⚠️ Could not get viewport: ${e.message}`);
-    }
-    
-    // Check environment
-    console.log(`🖥️  System Platform: ${process.platform}`);
-    console.log(`🖥️  Node Version: ${process.version}`);
-    console.log(`🖥️  Chrome Path Env: ${process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_PATH || 'Not set'}`);
-    
     // Set permissions: Allow camera (so video icon appears), deny microphone
     const context = browser.defaultBrowserContext();
-    // Allow camera so Zoom shows video icon, deny microphone
     await context.overridePermissions('https://zoom.us', ['camera']);
     await context.overridePermissions('https://app.zoom.us', ['camera']);
     
-    // Override getUserMedia: Provide video stream (so icon appears), then we'll stop it
-    // IMPORTANT: This must run BEFORE browser detection to ensure mediaDevices exists
+    // Override getUserMedia: Create video stream with DISABLED track from start
     await page.evaluateOnNewDocument(() => {
-      // CRITICAL: Create navigator.mediaDevices if it doesn't exist (headless mode issue)
-      // This MUST be done FIRST before any other mediaDevices access
-      if (!navigator.mediaDevices) {
-        console.log(`[Browser] navigator.mediaDevices is undefined - creating it`);
-        navigator.mediaDevices = {};
-      }
-      
-      // Create a fake video stream - we'll provide it initially so Zoom shows the icon
+      // Create fake video stream function
       function createFakeVideoStream() {
         const canvas = document.createElement('canvas');
         canvas.width = 640;
         canvas.height = 480;
         const ctx = canvas.getContext('2d');
-        
-        // Draw a simple pattern (black background)
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Capture stream at 30fps
         const stream = canvas.captureStream(30);
-        
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
           Object.defineProperty(videoTrack, 'label', { value: 'Fake Video Device', writable: false });
           Object.defineProperty(videoTrack, 'kind', { value: 'video', writable: false });
+          // CRITICAL: Disable track immediately so icon shows as disabled
+          videoTrack.enabled = false;
+          videoTrack.muted = true;
         }
-        
         return stream;
       }
       
-      // Store the original getUserMedia if it exists, otherwise create a placeholder
-      let originalGetUserMedia = null;
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      // Create navigator.mediaDevices if it doesn't exist
+      if (!navigator.mediaDevices) {
+        navigator.mediaDevices = {};
       }
       
-      // Override getUserMedia: ALWAYS provide video (so icon appears), deny audio
+      // Override getUserMedia: Provide video stream with DISABLED track
       navigator.mediaDevices.getUserMedia = async (constraints) => {
-        console.log(`[Browser] getUserMedia called with constraints:`, JSON.stringify(constraints));
-        
-        // Always deny audio
-        if (constraints && constraints.audio) {
-          constraints.audio = false;
-        }
-        
-        // If video is requested, ALWAYS provide it (we'll stop it later in the UI)
-        // This is CRITICAL for video icon to appear in participant list
         if (constraints && constraints.video) {
-          console.log(`[Browser] Video requested - providing fake video stream so icon appears`);
-          // Return fake video stream - we'll stop it after joining
           const stream = createFakeVideoStream();
-          
-          // CRITICAL: Ensure video track is enabled initially so Zoom detects it
-          const videoTrack = stream.getVideoTracks()[0];
-          if (videoTrack) {
-            videoTrack.enabled = true; // Enable initially so icon appears
-            videoTrack.muted = false;  // Not muted initially
-            console.log(`[Browser] Video track enabled: ${videoTrack.enabled}, muted: ${videoTrack.muted}, readyState: ${videoTrack.readyState}`);
-          }
-          
-          // Store globally so we can access it later to disable
           window.localStream = stream;
           window.fakeVideoStream = stream;
-          console.log(`[Browser] Video stream created and stored globally`);
-          return stream;
+          return stream; // Return stream with disabled track
         }
-        
-        // If only audio requested, deny
-        console.log(`[Browser] Only audio requested - denying`);
         throw new Error('Audio permission denied');
       };
       
-      // Also override enumerateDevices to list fake video device
-      if (navigator.mediaDevices.enumerateDevices) {
-        const originalEnumerateDevices = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
-        navigator.mediaDevices.enumerateDevices = async () => {
-          const devices = await originalEnumerateDevices();
-          // Add fake video device if not present
-          const hasVideoDevice = devices.some(d => d.kind === 'videoinput');
-          if (!hasVideoDevice) {
-            devices.push({
-              deviceId: 'fake-video-device',
-              kind: 'videoinput',
-              label: 'Fake Video Device',
-              groupId: 'fake-video-group'
-            });
-            console.log(`[Browser] Added fake video device to enumerateDevices`);
-          }
-          return devices;
-        };
-      }
-      
-      // Override permissions API - allow camera (so icon appears), deny microphone
+      // Override permissions API - allow camera, deny microphone
       if (navigator.permissions) {
         const originalQuery = navigator.permissions.query.bind(navigator.permissions);
         navigator.permissions.query = async (permissionDesc) => {
-          // Allow camera (so video icon appears in participant list)
-          if (permissionDesc.name === 'camera') {
-            return { state: 'granted' };
-          }
-          // Deny microphone
-          if (permissionDesc.name === 'microphone') {
-            return { state: 'denied' };
-          }
+          if (permissionDesc.name === 'camera') return { state: 'granted' };
+          if (permissionDesc.name === 'microphone') return { state: 'denied' };
           return originalQuery(permissionDesc);
         };
       }
     });
-    
-    // Post-setup detection removed for performance
 
     // Navigate to Zoom join URL
     const zoomJoinUrl = `https://zoom.us/wc/join/${meetingId}`;
@@ -421,7 +251,7 @@ async function joinZoomMeeting() {
       };
     });
     
-    console.log(`🔍 Page analysis for ${botName}:`, JSON.stringify(pageType, null, 2));
+    // Page type detected (no log for performance)
     
     const nameSelectors = [
       // Primary selectors
@@ -463,7 +293,7 @@ async function joinZoomMeeting() {
     
     for (const selector of nameSelectors) {
       try {
-        console.log(`Trying selector: ${selector}`);
+        // Trying selector (no log for performance)
         await page.waitForSelector(selector, { timeout: 5000 });
         
         // Check if element is visible and interactable
@@ -521,7 +351,7 @@ async function joinZoomMeeting() {
             visible: el.offsetWidth > 0 && el.offsetHeight > 0
           }))
         );
-        console.log(`🔍 Found ${inputs.length} input elements for ${botName}:`, JSON.stringify(inputs, null, 2));
+        // Input elements found (no log for performance)
         
       } catch (debugError) {
         console.log(`⚠️ Debug capture failed for ${botName}: ${debugError.message}`);
@@ -613,452 +443,57 @@ async function joinZoomMeeting() {
       }
     }
     
-    // Wait for navigation with longer timeout
-    console.log(`Waiting for meeting to load for ${botName}...`);
-    await new Promise(resolve => setTimeout(resolve, 10000));
-    
-    // Check current URL
-    const currentUrl = page.url();
-    console.log(`Current URL for ${botName}: ${currentUrl}`);
-    
-    // Wait a bit more to ensure we're actually in the meeting
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    // Handle microphone and camera permission popup - SELECT "Join with video" so icon appears, then disable it
-    // CRITICAL: Wait longer for permission dialog to appear before checking for OK button
-    console.log(`🎥 [${botName}] Checking for microphone/camera permission popup...`);
-    
-    // Wait longer for permission dialog to appear - it may take time to load
-    // Don't check for OK button until we've given permission dialog enough time
+    // Wait for meeting to load (minimal wait for speed)
     await new Promise(resolve => setTimeout(resolve, 3000));
     
-    // Wait for permission dialog to appear - try multiple selectors with longer timeout
-    let permissionDialogFound = false;
+    // Handle permission popup and disable video IMMEDIATELY
     try {
-      await page.waitForSelector('.pepc-permission-dialog', { timeout: 8000 });
-      permissionDialogFound = true;
-      console.log(`🎥 [${botName}] Permission dialog appeared!`);
-    } catch (e) {
-      try {
-        await page.waitForSelector('[class*="permission-dialog"]', { timeout: 5000 });
-        permissionDialogFound = true;
-        console.log(`🎥 [${botName}] Permission dialog found with alternative selector!`);
-      } catch (e2) {
-        try {
-          await page.waitForSelector('permission[type="camera"]', { timeout: 5000 });
-          permissionDialogFound = true;
-          console.log(`🎥 [${botName}] Permission element found directly!`);
-        } catch (e3) {
-          console.log(`⚠️ [${botName}] Permission dialog not found immediately, will retry...`);
-        }
-      }
-    }
-    
-    // Additional wait to ensure dialog is fully loaded
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    for (let attempt = 1; attempt <= 5; attempt++) {
-      try {
-        // Wait longer for permission dialog to appear (2s, 4s, 6s, 8s, 10s)
-        if (attempt > 1) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-        
-        const permissionResult = await page.evaluate((attemptNum) => {
-          // Look for the permission dialog - it has a specific structure
-          // <permission type="camera"> element is the "Use camera" button
-          const permissionDialog = document.querySelector('.pepc-permission-dialog');
-          
-          // Also try alternative selectors
-          const altDialog1 = document.querySelector('[class*="permission-dialog"]');
-          const altDialog2 = document.querySelector('[class*="permission"]');
-          const permissionDialogElement = permissionDialog || altDialog1 || altDialog2;
-        
-          if (permissionDialogElement) {
-            console.log(`[Browser] Found permission dialog (selector: ${permissionDialog ? '.pepc-permission-dialog' : 'alternative'})`);
-            
-            // DEBUG: Log entire dialog HTML structure
-            console.log(`[Browser] Dialog HTML (first 500 chars): ${permissionDialogElement.innerHTML.substring(0, 500)}`);
-            
-            // PRIORITY 1: Look for <permission type="camera"> element - this is the "Use camera" button
-            // Try multiple ways to find it
-            let useCameraButton = permissionDialogElement.querySelector('permission[type="camera"]');
-            
-            // If not found, try querySelectorAll and filter
-            if (!useCameraButton) {
-              const allPermissions = permissionDialogElement.querySelectorAll('permission');
-              console.log(`[Browser] Found ${allPermissions.length} permission elements total`);
-              for (const perm of allPermissions) {
-                const type = perm.getAttribute('type');
-                console.log(`[Browser] Permission element: type="${type}", tagName="${perm.tagName}"`);
-                if (type === 'camera') {
-                  useCameraButton = perm;
-                  console.log(`[Browser] Found camera permission element via querySelectorAll`);
-                  break;
-                }
-              }
-            }
-            
-            // Also try finding by shadow DOM or nested structure
-            if (!useCameraButton) {
-              // Try finding in shadow roots
-              const walker = document.createTreeWalker(permissionDialogElement, NodeFilter.SHOW_ELEMENT);
-              let node;
-              while (node = walker.nextNode()) {
-                if (node.tagName && node.tagName.toLowerCase() === 'permission' && node.getAttribute('type') === 'camera') {
-                  useCameraButton = node;
-                  console.log(`[Browser] Found camera permission via tree walker`);
-                  break;
-                }
-              }
-            }
-            
-            if (useCameraButton) {
-              const isVisible = useCameraButton.offsetWidth > 0 && useCameraButton.offsetHeight > 0;
-              const computedStyle = window.getComputedStyle(useCameraButton);
-              const display = computedStyle.display;
-              const visibility = computedStyle.visibility;
-              console.log(`[Browser] Found <permission type="camera"> button, visible: ${isVisible}, display: ${display}, visibility: ${visibility}`);
-              
-              if (isVisible && display !== 'none' && visibility !== 'hidden') {
-                console.log(`[Browser] Clicking <permission type="camera"> button to enable video`);
-                
-                // Try multiple click methods
-                useCameraButton.click();
-                useCameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                useCameraButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-                useCameraButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-                
-                // Also try programmatic click via button if it's a button
-                if (useCameraButton.tagName.toLowerCase() === 'button' || useCameraButton.onclick) {
-                  if (useCameraButton.onclick) {
-                    useCameraButton.onclick();
-                  }
-                }
-                
-                return { handled: true, button: 'use_camera_permission', label: 'Use camera (permission element)' };
-              } else {
-                console.log(`[Browser] Camera permission button found but not visible (display: ${display}, visibility: ${visibility})`);
-              }
-            } else {
-              // Log all permission elements found for debugging
-              const allPermissionElements = permissionDialogElement.querySelectorAll('permission');
-              console.log(`[Browser] Found ${allPermissionElements.length} permission elements in dialog`);
-              allPermissionElements.forEach((perm, idx) => {
-                const type = perm.getAttribute('type');
-                const visible = perm.offsetWidth > 0 && perm.offsetHeight > 0;
-                console.log(`[Browser] Permission element ${idx + 1}: type="${type}", visible=${visible}, tagName="${perm.tagName}"`);
-              });
-              
-              // Also log all buttons in dialog
-              const allButtons = permissionDialogElement.querySelectorAll('button, [role="button"]');
-              console.log(`[Browser] Found ${allButtons.length} buttons in dialog`);
-              allButtons.forEach((btn, idx) => {
-                const text = btn.textContent.trim();
-                const ariaLabel = btn.getAttribute('aria-label') || '';
-                const visible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
-                console.log(`[Browser] Button ${idx + 1}: text="${text.substring(0, 50)}", aria-label="${ariaLabel}", visible=${visible}`);
-              });
-            }
-          
-          // PRIORITY 2: Look for button with "Use camera" text inside permission dialog
-          const buttons = Array.from(permissionDialogElement.querySelectorAll('button, [role="button"], permission'));
-          const useCameraTextButton = buttons.find(btn => {
-            const text = btn.textContent.toLowerCase();
-            const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-            const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
-            return isVisible && (
-              text.includes('use camera') ||
-              text.includes('use microphone and camera') ||
-              text.includes('join with video') ||
-              text.includes('turn on video') ||
-              ariaLabel.includes('use camera') ||
-              ariaLabel.includes('use microphone and camera') ||
-              ariaLabel.includes('join with video'));
-          });
-          
-          if (useCameraTextButton) {
-            const label = useCameraTextButton.getAttribute('aria-label') || useCameraTextButton.textContent;
-            console.log(`[Browser] Found use camera button: "${label}" - clicking to initialize video`);
-            useCameraTextButton.click();
-            return { handled: true, button: 'use_camera_text', label };
-          }
-          
-          // Don't click "Continue without camera" - we want video enabled
-          const footerButton = permissionDialogElement.querySelector('.pepc-permission-dialog__footer-button') ||
-                              permissionDialogElement.querySelector('[class*="footer-button"]');
-          if (footerButton && footerButton.textContent.toLowerCase().includes('continue without')) {
-            console.log(`[Browser] Found "Continue without camera" button - NOT clicking (we want video)`);
-          }
-        } else {
-          console.log(`[Browser] Permission dialog NOT found - checking for permission elements anywhere...`);
-        }
-        
-        // Fallback: Look for buttons outside permission dialog
-        const allButtons = Array.from(document.querySelectorAll('button, [role="button"], permission'));
-        const buttonInfo = allButtons.map(b => ({
-          text: b.textContent,
-          ariaLabel: b.getAttribute('aria-label'),
-          tagName: b.tagName,
-          type: b.getAttribute('type'),
-          visible: b.offsetWidth > 0 && b.offsetHeight > 0
-        }));
-        
-        console.log(`[Browser] Found ${allButtons.length} total buttons:`, buttonInfo.filter(b => b.visible).slice(0, 15));
-        
-        // Look for <permission type="camera"> element anywhere
-        const permissionElement = document.querySelector('permission[type="camera"]');
-        if (permissionElement) {
-          const isVisible = permissionElement.offsetWidth > 0 && permissionElement.offsetHeight > 0;
-          console.log(`[Browser] Found <permission type="camera"> element anywhere, visible: ${isVisible}`);
-          if (isVisible) {
-            console.log(`[Browser] Clicking <permission type="camera"> element to enable video`);
-            permissionElement.click();
-            permissionElement.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-            return { handled: true, button: 'permission_camera', label: 'Use camera (permission element)' };
-          }
-        }
-        
-        // Look for "Use camera" or "Join with video" button
-        const joinWithVideoButton = allButtons.find(btn => {
-          const text = btn.textContent.toLowerCase();
+      await page.evaluate(() => {
+        // Priority 1: Click "Use camera" or "Join with video" to initialize video icon
+        const buttons = Array.from(document.querySelectorAll('button, permission'));
+        const useCameraButton = buttons.find(btn => {
+          const text = (btn.textContent || '').toLowerCase();
           const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
-          return isVisible && (
-            text.includes('use camera') ||
-            text.includes('use microphone and camera') ||
-            text.includes('join with video') ||
-            text.includes('turn on video') ||
-            text.includes('enable video') ||
-            ariaLabel.includes('use camera') ||
-            ariaLabel.includes('use microphone and camera') ||
-            ariaLabel.includes('join with video') ||
-            ariaLabel.includes('turn on video'));
+          const type = btn.getAttribute('type');
+          return (type === 'camera') ||
+                 text.includes('use camera') || text.includes('join with video') ||
+                 ariaLabel.includes('use camera') || ariaLabel.includes('join with video');
         });
         
-        if (joinWithVideoButton) {
-          const label = joinWithVideoButton.getAttribute('aria-label') || joinWithVideoButton.textContent;
-          console.log(`[Browser] Found join with video button: "${label}" - clicking to initialize video`);
-          joinWithVideoButton.click();
-          return { handled: true, button: 'join_with_video', label };
+        if (useCameraButton) {
+          useCameraButton.click();
         }
         
-        // Look for "OK" button for floating reactions popup (ONLY if no permission dialog found)
-        // CRITICAL: Never click OK if permission dialog exists - we need camera button first
-        // Use more specific selectors to avoid false positives
-        const permissionDialogCheck = document.querySelector('.pepc-permission-dialog') ||
-                                     document.querySelector('[class*="permission-dialog"]');
-        
-        // Also check if there's a permission element anywhere (more specific check)
-        const hasPermissionElement = document.querySelector('permission[type="camera"]') ||
-                                     document.querySelector('permission[type="microphone"]');
-        
-        // Only click OK if:
-        // 1. No permission dialog found
-        // 2. No permission elements found
-        // 3. We've waited long enough (this check happens in later attempts)
-        if (!permissionDialogCheck && !hasPermissionElement) {
-          // Additional check: make sure OK button is not inside a permission-related container
-          const okButton = allButtons.find(btn => {
-            const text = btn.textContent.toLowerCase().trim();
-            const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
-            
-            // Check if button is inside permission dialog (should not click)
-            let parent = btn.parentElement;
-            let isInPermissionDialog = false;
-            while (parent) {
-              if (parent.classList && (
-                  parent.classList.contains('pepc-permission-dialog') ||
-                  parent.className.includes('permission-dialog') ||
-                  parent.tagName === 'PERMISSION'
-              )) {
-                isInPermissionDialog = true;
-                break;
-              }
-              parent = parent.parentElement;
-            }
-            
-            // Only click OK if it's a simple popup (not permission dialog) and not in permission container
-            return isVisible && 
-                   text === 'ok' && 
-                   text.length <= 3 &&
-                   !isInPermissionDialog;
+        // Priority 2: Immediately disable video track if stream exists
+        if (window.localStream || window.fakeVideoStream) {
+          const stream = window.localStream || window.fakeVideoStream;
+          stream.getVideoTracks().forEach(track => {
+            track.enabled = false;
+            track.muted = true;
+            track.stop();
           });
-          
-          if (okButton) {
-            console.log(`[Browser] Found OK button for popup (no permission dialog found, attempt ${attemptNum})`);
-            // Only click OK on later attempts (after we've given permission dialog time to appear)
-            if (attemptNum >= 3) {
-              okButton.click();
-              return { handled: true, button: 'ok', label: 'OK' };
-            } else {
-              console.log(`[Browser] Skipping OK button click on early attempt (${attemptNum}) - waiting for permission dialog`);
-            }
-          }
-        } else {
-          if (permissionDialogCheck) {
-            console.log(`[Browser] Permission dialog exists - NOT clicking OK button (need camera button first)`);
-          }
-          if (hasPermissionElement) {
-            console.log(`[Browser] Permission element found - NOT clicking OK button (need camera button first)`);
-          }
         }
         
-        return { handled: false, button: null, label: null };
-        }, attempt);
-      
-        if (permissionResult && permissionResult.handled) {
-          if (permissionResult.button === 'ok') {
-            // Don't break, continue trying
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            continue;
-          } else if (permissionResult.button === 'use_camera_permission' || permissionResult.button === 'permission_camera' ||
-                     permissionResult.button === 'join_with_video' || permissionResult.button === 'use_camera_text') {
-            // Video initialized - IMMEDIATELY disable it
-            await new Promise(resolve => setTimeout(resolve, 500));
-            // Inline video disable
-            await page.evaluate(() => {
-              try {
-                if (window.localStream) window.localStream.getVideoTracks().forEach(t => { t.enabled = false; t.muted = true; t.stop(); });
-                if (window.fakeVideoStream) window.fakeVideoStream.getVideoTracks().forEach(t => { t.enabled = false; t.muted = true; t.stop(); });
-                const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-                const stopBtn = buttons.find(b => (b.getAttribute('aria-label') || '').toLowerCase().includes('stop video'));
-                if (stopBtn) stopBtn.click();
-                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', bubbles: true }));
-              } catch(e) {}
-            });
-            await page.keyboard.press('v');
-            break; // Success, exit loop
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } else {
-          if (permissionResult && permissionResult.dialogFound) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-          } else if (attempt < 5) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      } catch (error) {
-        // Silent fail
-      }
-    }
-    
-    // Disable video IMMEDIATELY after joining (so icon appears but is crossed/disabled)
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Inline video disable (fast)
-    await page.evaluate(() => {
-      try {
-        if (window.localStream) window.localStream.getVideoTracks().forEach(t => { t.enabled = false; t.muted = true; t.stop(); });
-        if (window.fakeVideoStream) window.fakeVideoStream.getVideoTracks().forEach(t => { t.enabled = false; t.muted = true; t.stop(); });
-        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-        const stopBtn = buttons.find(b => (b.getAttribute('aria-label') || '').toLowerCase().includes('stop video'));
-        if (stopBtn) stopBtn.click();
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', bubbles: true }));
-      } catch(e) {}
-    });
-    await page.keyboard.press('v');
-    try {
-      const result = await page.evaluate(async () => {
-        const logs = [];
-        let videoDisabled = false;
-        let clickedButton = null;
-        
-        // Method 1: Stop all video tracks immediately (PERMANENTLY)
-        try {
-          logs.push(`[Browser] Method 1: Stopping all video tracks permanently...`);
-          const allStreams = [];
-          
-          // Get stream from global storage (DON'T get new stream - it re-enables video!)
-          if (window.localStream) {
-            allStreams.push(window.localStream);
-            logs.push(`[Browser] Found window.localStream`);
-          }
-          if (window.fakeVideoStream) {
-            allStreams.push(window.fakeVideoStream);
-            logs.push(`[Browser] Found window.fakeVideoStream`);
-          }
-          
-          let totalTracksStopped = 0;
-          allStreams.forEach(stream => {
-            const videoTracks = stream.getVideoTracks();
-            videoTracks.forEach(track => {
-              // PERMANENTLY disable and stop
-              track.enabled = false;
-              track.muted = true;
-              track.stop(); // This prevents re-enabling
-              totalTracksStopped++;
-            });
-          });
-          
-          logs.push(`[Browser] Permanently stopped ${totalTracksStopped} video track(s)`);
-        } catch (e) {
-          logs.push(`[Browser] Error stopping video tracks: ${e.message}`);
-        }
-        
-        // Method 2: Find and click "Stop Video" button (FAST - single pass)
-        logs.push(`[Browser] Method 2: Finding and clicking video button...`);
-        const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
-        
-        // Priority 1: "Stop Video" button
-        const stopVideoButton = allButtons.find(btn => {
+        // Priority 3: Click "Stop Video" button if available
+        const stopVideoButton = buttons.find(btn => {
           const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          return ariaLabel.includes('stop video') || ariaLabel.includes('turn off video') || ariaLabel.includes('stop my video');
+          return ariaLabel.includes('stop video') || ariaLabel.includes('turn off video');
         });
         
         if (stopVideoButton) {
-          const ariaLabel = stopVideoButton.getAttribute('aria-label') || '';
-          logs.push(`[Browser] Found "Stop Video" button: "${ariaLabel}"`);
-          clickedButton = ariaLabel;
           stopVideoButton.click();
-          videoDisabled = true;
-        } else {
-          // Priority 2: Any video button (toggle off)
-          const videoButton = allButtons.find(btn => {
-            const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-            const text = btn.textContent.toLowerCase();
-            return (ariaLabel.includes('video') || text.includes('video')) &&
-                   !ariaLabel.includes('start') && !ariaLabel.includes('turn on');
-          });
-          
-          if (videoButton) {
-            const ariaLabel = videoButton.getAttribute('aria-label') || '';
-            logs.push(`[Browser] Found video button: "${ariaLabel}", toggling off...`);
-            clickedButton = ariaLabel;
-            videoButton.click();
-            videoDisabled = true;
-          }
         }
         
-        // Method 3: Press 'v' key (Zoom shortcut) - do this ALWAYS to ensure video is off
-        logs.push(`[Browser] Method 3: Pressing 'v' key to toggle video off...`);
-        // Dispatch keyboard event
+        // Priority 4: Press 'v' key to toggle video off
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', bubbles: true }));
-        document.dispatchEvent(new KeyboardEvent('keyup', { key: 'v', code: 'KeyV', bubbles: true }));
-        
-        return { logs, videoDisabled, clickedButton };
       });
       
-      // Log important messages only
-      if (result && result.logs) {
-        // Only log important messages to reduce spam
-        result.logs.filter(log => 
-          log.includes('Found') || log.includes('stopped') || log.includes('Permanently') || log.includes('Error')
-        ).forEach(log => console.log(`🎥 [${botName}] ${log}`));
-      }
-      
-      if (result && result.videoDisabled) {
-        console.log(`✅ [${botName}] Video disabled successfully via button: "${result.clickedButton || 'keyboard shortcut'}"`);
-      } else {
-        console.log(`✅ [${botName}] Video disabled via keyboard shortcut`);
-      }
-      
-      // Also press 'v' key from Puppeteer side (redundancy for reliability)
+      // Also press 'v' from Puppeteer side
       await page.keyboard.press('v');
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
     } catch (error) {
-      console.log(`❌ [${botName}] Error disabling video: ${error.message}`);
+      // Silent fail - continue
     }
     
     // Handle any additional popups that might appear
@@ -1077,162 +512,30 @@ async function joinZoomMeeting() {
       console.log(`Error closing additional popups for ${botName}: ${error.message}`);
     }
     
-    // Check URL again after waiting
+    // Quick validation
     const finalUrl = page.url();
-    console.log(`Final URL for ${botName}: ${finalUrl}`);
-    
-    // Skip screenshot to avoid delays - REMOVED FOR PERFORMANCE
-    // try {
-    //   await page.screenshot({ path: `debug_${botName}.png` });
-    //   console.log(`Screenshot saved as debug_${botName}.png`);
-    // } catch (e) {
-    //   console.log(`Could not take screenshot: ${e.message}`);
-    // }
-    
-    // Check if we're actually in the meeting by looking for meeting controls
     const inMeeting = await page.evaluate(() => {
-      // Look for meeting controls like mute, video, participants buttons
-      const meetingControls = document.querySelectorAll('[data-testid], [aria-label*="mute"], [aria-label*="video"], [aria-label*="participant"]');
-      
-      // Also check for participant count or meeting indicators
-      const participantIndicators = document.querySelectorAll('[aria-label*="participant"], [class*="participant"], [data-testid*="participant"]');
-      
-      // Check for actual meeting interface elements
-      const meetingInterface = document.querySelectorAll('[class*="meeting"], [class*="conference"], [id*="meeting"]');
-      
-      return {
-        controls: meetingControls.length,
-        participants: participantIndicators.length,
-        interface: meetingInterface.length,
-        url: window.location.href,
-        title: document.title
-      };
+      const stillConnected = !document.querySelector('[class*="disconnected"], [class*="reconnect"]');
+      return { connected: stillConnected };
     });
     
-    console.log(`Meeting validation for ${botName}:`, inMeeting);
-    
-    // Reduced wait time - connection is already stable
-    console.log(`⏳ ${botName} ensuring stable connection...`);
-    await new Promise(resolve => setTimeout(resolve, 5000)); // Reduced to 5 seconds
-    
-    // Final validation - check if still in meeting
-    const finalValidation = await page.evaluate(() => {
-      // Check if we're still connected to meeting
-      const stillConnected = !document.querySelector('[class*="disconnected"], [class*="reconnect"], [class*="connection-error"]');
-      const hasAudio = document.querySelector('[aria-label*="mute"], [class*="audio"]');
-      const hasVideo = document.querySelector('[aria-label*="video"], [class*="video"]');
-      
-      return {
-        connected: stillConnected,
-        hasAudio: !!hasAudio,
-        hasVideo: !!hasVideo,
-        pageVisible: !document.hidden
-      };
-    });
-    
-    console.log(`Final validation for ${botName}:`, finalValidation);
-    
-    if ((finalUrl.includes('zoom.us/wc/') || finalUrl.includes('zoom.us/j/') || finalUrl.includes('app.zoom.us') || inMeeting.controls > 0) && finalValidation.connected) {
+    if ((finalUrl.includes('zoom.us/wc/') || finalUrl.includes('zoom.us/j/') || finalUrl.includes('app.zoom.us')) && inMeeting.connected) {
       console.log(`✅ ${botName} successfully joined and validated in meeting!`);
       
       // Keep alive for specified time
       console.log(`⏰ ${botName} will stay in meeting for ${keepAliveMinutes} minutes`);
       
-      // Minimal wait - already validated
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Reduced to 1 second
+      // Wait a bit more to ensure we're fully in the meeting
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
       // Bot stays in meeting - NO process.exit()
       console.log(`✅ ${botName} successfully joined meeting and will stay for ${keepAliveMinutes} minutes`);
       
-      // Keep connection alive - periodic checks to prevent disconnection
-      const keepAliveInterval = setInterval(async () => {
-        try {
-          // Check if still in meeting
-          const stillConnected = await page.evaluate(() => {
-            // Check for disconnection indicators
-            const disconnected = document.querySelector('[class*="disconnected"], [class*="reconnect"], [class*="connection-error"]');
-            const inMeeting = window.location.href.includes('zoom.us/wc/') || 
-                            window.location.href.includes('zoom.us/j/') || 
-                            window.location.href.includes('app.zoom.us');
-            
-            return !disconnected && inMeeting;
-          });
-          
-          if (!stillConnected) {
-            console.log(`⚠️  ${botName} appears disconnected. Attempting to stay connected...`);
-            // Try to refresh or stay on page
-            try {
-              await page.evaluate(() => {
-                // Keep page active
-                if (document.hidden) {
-                  document.dispatchEvent(new Event('visibilitychange'));
-                }
-              });
-            } catch (e) {
-              // Ignore
-            }
-          }
-          
-          // Keep video DISABLED - ensure it stays off and icon remains visible
-          // Video icon should remain disabled/crossed like mic icon
-          await page.evaluate(() => {
-            // Method 1: Stop any active video tracks
-            try {
-              if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-                  .then(stream => {
-                    stream.getVideoTracks().forEach(track => {
-                      track.enabled = false;
-                      track.stop();
-                    });
-                  })
-                  .catch(() => {});
-              }
-            } catch (e) {}
-            
-            // Method 2: Check video button and ensure it's off
-            const videoButtons = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="video"]'));
-            const videoButton = videoButtons.find(btn => {
-              const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-              const dataTestId = (btn.getAttribute('data-testid') || '').toLowerCase();
-              return (ariaLabel.includes('video') || ariaLabel.includes('camera') || dataTestId.includes('video')) &&
-                     !ariaLabel.includes('start') && !ariaLabel.includes('turn on');
-            });
-            
-            // If video button shows video is on (says "Stop Video"), turn it off
-            if (videoButton) {
-              const ariaLabel = (videoButton.getAttribute('aria-label') || '').toLowerCase();
-              const isVideoOn = ariaLabel.includes('stop') || ariaLabel.includes('turn off');
-              if (isVideoOn) {
-                videoButton.click();
-              }
-            }
-          });
-          
-        } catch (error) {
-          // Ignore errors in keep-alive checks
-        }
-      }, 30000); // Check every 30 seconds
-      
       // Keep the bot alive in the meeting
       setTimeout(() => {
-        clearInterval(keepAliveInterval);
         console.log(`👋 ${botName} leaving meeting after ${keepAliveMinutes} minutes`);
         process.exit(0);
       }, keepAliveMinutes * 60 * 1000);
-      
-      // Also keep page active to prevent timeout
-      setInterval(async () => {
-        try {
-          // Small interaction to keep page active
-          await page.evaluate(() => {
-            // Dispatch a small event to keep page alive
-            document.dispatchEvent(new Event('mousemove'));
-          });
-        } catch (e) {
-          // Ignore
-        }
-      }, 60000); // Every minute
       
       // Return success to indicate bot joined successfully
       return true;
