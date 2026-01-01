@@ -96,17 +96,43 @@ function generateRealName() {
 function launchBot(botName) {
   console.log(`🤖 Launching ${botName}...`);
   
+  // Detect Chrome path for server
+  let chromePath = process.env.CHROME_PATH;
+  if (!chromePath) {
+    // Try to find Chrome on Linux
+    try {
+      chromePath = execSync('which google-chrome', { encoding: 'utf-8' }).trim();
+    } catch (e) {
+      try {
+        chromePath = execSync('which google-chrome-stable', { encoding: 'utf-8' }).trim();
+      } catch (e2) {
+        // Default paths
+        chromePath = process.platform === 'darwin' 
+          ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+          : '/usr/bin/google-chrome';
+      }
+    }
+  }
+
   const env = {
     ...process.env,
     KEEP_ALIVE_MINUTES: config.keepAliveMinutes.toString(),
-    CHROME_PATH: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+    CHROME_PATH: chromePath
   };
 
   const botProcess = spawn('node', ['botWrapper.js', botName, config.meetingURL, config.passcode], {
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'pipe'], // Enable stderr to see errors
     env: env,
     cwd: __dirname
+  });
+
+  // Log errors from bot process
+  botProcess.stderr.on('data', (data) => {
+    const errorMsg = data.toString().trim();
+    if (errorMsg) {
+      console.log(`⚠️  ${botName} error: ${errorMsg}`);
+    }
   });
 
   const botInfo = {
