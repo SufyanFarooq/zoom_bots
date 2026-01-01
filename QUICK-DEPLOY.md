@@ -23,12 +23,20 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
-### Step 3: Configure Meeting Details
+### Step 3: Create .env File
 ```bash
-nano .env
+# Option 1: Use the automated script (recommended)
+./create-env.sh
+
+# Option 2: Copy from template
+cp env.template .env
+nano .env  # Edit as needed
+
+# Option 3: Create manually
+echo "CHROME_PATH=/usr/bin/google-chrome" > .env
 ```
 
-Edit:
+Edit `.env` file:
 ```env
 CHROME_PATH=/usr/bin/google-chrome
 MEETING_URL=https://zoom.us/wc/join/YOUR_MEETING_ID
