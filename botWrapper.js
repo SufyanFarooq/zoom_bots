@@ -157,12 +157,18 @@ async function joinZoomMeeting() {
       const detectedChromePath = chromePath || getChromeExecutablePath();
       console.log(`📍 Chrome Executable: ${detectedChromePath}`);
       
-      // Get Chrome version from command line
+      // Get Chrome version from command line (handle spaces in path)
       try {
-        const chromeVersion = execSync(`${detectedChromePath} --version`, { encoding: 'utf-8', timeout: 5000 }).trim();
+        const chromeVersion = execSync(`"${detectedChromePath}" --version`, { encoding: 'utf-8', timeout: 5000 }).trim();
         console.log(`🔧 Chrome CLI Version: ${chromeVersion}`);
       } catch (e) {
-        console.log(`⚠️ Could not get Chrome CLI version: ${e.message}`);
+        // Try without quotes if path has no spaces
+        try {
+          const chromeVersion = execSync(`${detectedChromePath} --version`, { encoding: 'utf-8', timeout: 5000 }).trim();
+          console.log(`🔧 Chrome CLI Version: ${chromeVersion}`);
+        } catch (e2) {
+          console.log(`⚠️ Could not get Chrome CLI version: ${e2.message}`);
+        }
       }
     } catch (e) {
       console.log(`⚠️ Could not get Chrome path info: ${e.message}`);
@@ -234,8 +240,6 @@ async function joinZoomMeeting() {
     console.log(`🖥️  Node Version: ${process.version}`);
     console.log(`🖥️  Chrome Path Env: ${process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_PATH || 'Not set'}`);
     
-    console.log(`🔍 ========== END BROWSER DETECTION ==========\n`);
-
     // Set permissions: Allow camera (so video icon appears), deny microphone
     const context = browser.defaultBrowserContext();
     // Allow camera so Zoom shows video icon, deny microphone
@@ -243,6 +247,7 @@ async function joinZoomMeeting() {
     await context.overridePermissions('https://app.zoom.us', ['camera']);
     
     // Override getUserMedia: Provide video stream (so icon appears), then we'll stop it
+    // IMPORTANT: This must run BEFORE browser detection to ensure mediaDevices exists
     await page.evaluateOnNewDocument(() => {
       // Create a fake video stream - we'll provide it initially so Zoom shows the icon
       function createFakeVideoStream() {
