@@ -358,24 +358,7 @@ async function joinZoomMeeting() {
       }
     });
     
-    // Now check browser capabilities AFTER mediaDevices override
-    console.log(`\n🔍 ========== POST-SETUP BROWSER DETECTION [${botName}] ==========`);
-    try {
-      const capabilitiesAfter = await page.evaluate(() => ({
-        hasMediaDevices: !!navigator.mediaDevices,
-        hasGetUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
-        hasPermissions: !!navigator.permissions,
-        hasWebRTC: !!(window.RTCPeerConnection || window.webkitRTCPeerConnection),
-        isHeadless: navigator.webdriver || false,
-        webdriver: navigator.webdriver || false,
-        mediaDevicesType: typeof navigator.mediaDevices,
-        getUserMediaType: typeof (navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
-      }));
-      console.log(`🔧 Browser Capabilities (After Setup):`, JSON.stringify(capabilitiesAfter, null, 2));
-    } catch (e) {
-      console.log(`⚠️ Could not get browser capabilities after setup: ${e.message}`);
-    }
-    console.log(`🔍 ========== END POST-SETUP DETECTION ==========\n`);
+    // Post-setup detection removed for performance
 
     // Navigate to Zoom join URL
     const zoomJoinUrl = `https://zoom.us/wc/join/${meetingId}`;
@@ -925,34 +908,23 @@ async function joinZoomMeeting() {
         }, attempt);
       
         if (permissionResult && permissionResult.handled) {
-          console.log(`🎥 [${botName}] Permission popup handled (attempt ${attempt}): ${permissionResult.button} - "${permissionResult.label}"`);
           if (permissionResult.button === 'ok') {
-            console.log(`⚠️ [${botName}] WARNING: Only "OK" button clicked - video might not initialize!`);
-            // Don't break, continue trying to find permission dialog
-          } else if (permissionResult.button === 'use_camera_permission' || permissionResult.button === 'permission_camera') {
-            console.log(`✅ [${botName}] Successfully clicked permission[type="camera"] - video should initialize!`);
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            break; // Success, exit loop
-          } else if (permissionResult.button === 'join_with_video' || permissionResult.button === 'use_camera_text') {
-            console.log(`✅ [${botName}] Successfully clicked video button - video should initialize!`);
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            // Don't break, continue trying
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue;
+          } else if (permissionResult.button === 'use_camera_permission' || permissionResult.button === 'permission_camera' ||
+                     permissionResult.button === 'join_with_video' || permissionResult.button === 'use_camera_text') {
+            // Video initialized - IMMEDIATELY disable it
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await disableVideoImmediately(botName, page);
             break; // Success, exit loop
           }
-          if (permissionResult.button === 'continue_without_video') {
-            console.log(`⚠️ [${botName}] WARNING: Selected "Continue without video" - video icon might not appear!`);
-          }
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         } else {
-          // Check if dialog was found but button wasn't clicked
           if (permissionResult && permissionResult.dialogFound) {
-            console.log(`⚠️ [${botName}] Permission dialog found but camera button not clicked (attempt ${attempt}/5), retrying...`);
-            // Wait longer before retry
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 1500));
           } else if (attempt < 5) {
-            console.log(`⚠️ [${botName}] Permission popup not found (attempt ${attempt}/5), retrying...`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          } else {
-            console.log(`⚠️ [${botName}] No permission popup found after 5 attempts - video might not initialize`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
       } catch (error) {
