@@ -151,9 +151,10 @@ async function joinZoomMeeting() {
         if (videoTrack) {
           Object.defineProperty(videoTrack, 'label', { value: 'Fake Video Device', writable: false });
           Object.defineProperty(videoTrack, 'kind', { value: 'video', writable: false });
-          // CRITICAL: Disable track immediately so icon shows as disabled
-          videoTrack.enabled = false;
-          videoTrack.muted = true;
+          // CRITICAL: Create ENABLED track first (so Zoom detects it and shows icon)
+          // We'll disable it immediately after joining
+          videoTrack.enabled = true;
+          videoTrack.muted = false;
         }
         return stream;
       }
@@ -163,16 +164,34 @@ async function joinZoomMeeting() {
         navigator.mediaDevices = {};
       }
       
-      // Override getUserMedia: Provide video stream with DISABLED track
+      // Override getUserMedia: Provide video stream with ENABLED track (we'll disable after joining)
       navigator.mediaDevices.getUserMedia = async (constraints) => {
         if (constraints && constraints.video) {
           const stream = createFakeVideoStream();
           window.localStream = stream;
           window.fakeVideoStream = stream;
-          return stream; // Return stream with disabled track
+          return stream; // Return stream with ENABLED track (so icon appears)
         }
         throw new Error('Audio permission denied');
       };
+      
+      // Override enumerateDevices to list fake video device
+      if (navigator.mediaDevices.enumerateDevices) {
+        const originalEnumerateDevices = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+        navigator.mediaDevices.enumerateDevices = async () => {
+          const devices = await originalEnumerateDevices();
+          const hasVideoDevice = devices.some(d => d.kind === 'videoinput');
+          if (!hasVideoDevice) {
+            devices.push({
+              deviceId: 'fake-video-device',
+              kind: 'videoinput',
+              label: 'Fake Video Device',
+              groupId: 'fake-video-group'
+            });
+          }
+          return devices;
+        };
+      }
       
       // Override permissions API - allow camera, deny microphone
       if (navigator.permissions) {
