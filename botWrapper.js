@@ -507,36 +507,122 @@ async function joinZoomMeeting() {
       }
     }
     
-    // NOW disable video immediately after it's initialized
+    // NOW disable video immediately after it's initialized - MULTIPLE AGGRESSIVE ATTEMPTS
+    for (let disableAttempt = 1; disableAttempt <= 5; disableAttempt++) {
+      try {
+        const disableResult = await page.evaluate((attemptNum) => {
+          const logs = [];
+          let videoDisabled = false;
+          
+          // Method 1: Permanently stop all video tracks
+          try {
+            if (window.localStream || window.fakeVideoStream) {
+              const stream = window.localStream || window.fakeVideoStream;
+              const videoTracks = stream.getVideoTracks();
+              logs.push(`[Attempt ${attemptNum}] Found ${videoTracks.length} video track(s)`);
+              
+              videoTracks.forEach(track => {
+                track.enabled = false;
+                track.muted = true;
+                track.stop(); // PERMANENTLY stop - prevents re-enabling
+                logs.push(`[Attempt ${attemptNum}] Stopped video track: ${track.label || 'unknown'}`);
+              });
+            }
+          } catch (e) {
+            logs.push(`[Attempt ${attemptNum}] Error stopping tracks: ${e.message}`);
+          }
+          
+          // Method 2: Find and click "Stop Video" button - try ALL possible selectors
+          try {
+            const allButtons = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="video"], [data-testid*="camera"]'));
+            logs.push(`[Attempt ${attemptNum}] Found ${allButtons.length} buttons`);
+            
+            // Try multiple selectors for video button
+            const videoButtonSelectors = [
+              // Exact "Stop Video" or "Turn off video"
+              btn => {
+                const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                return ariaLabel.includes('stop video') || ariaLabel.includes('turn off video');
+              },
+              // Any video button that says "stop" or "off"
+              btn => {
+                const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                const text = btn.textContent.toLowerCase();
+                return (ariaLabel.includes('video') || ariaLabel.includes('camera')) &&
+                       (ariaLabel.includes('stop') || ariaLabel.includes('off') || text.includes('stop'));
+              },
+              // By data-testid
+              btn => {
+                const dataTestId = (btn.getAttribute('data-testid') || '').toLowerCase();
+                return dataTestId.includes('video') && (dataTestId.includes('stop') || dataTestId.includes('off'));
+              },
+              // By class name containing video and stop/off
+              btn => {
+                const className = btn.className.toLowerCase();
+                return (className.includes('video') || className.includes('camera')) &&
+                       (className.includes('stop') || className.includes('off'));
+              }
+            ];
+            
+            for (const selector of videoButtonSelectors) {
+              const videoButton = allButtons.find(selector);
+              if (videoButton && !videoButton.disabled) {
+                const ariaLabel = videoButton.getAttribute('aria-label') || '';
+                logs.push(`[Attempt ${attemptNum}] Found video button: "${ariaLabel}"`);
+                
+                // Click multiple times to ensure it's off
+                videoButton.click();
+                logs.push(`[Attempt ${attemptNum}] Clicked video button`);
+                videoDisabled = true;
+                
+                // Also try dispatching events
+                videoButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                break;
+              }
+            }
+            
+            if (!videoDisabled) {
+              logs.push(`[Attempt ${attemptNum}] No "Stop Video" button found`);
+            }
+          } catch (e) {
+            logs.push(`[Attempt ${attemptNum}] Error finding button: ${e.message}`);
+          }
+          
+          // Method 3: Press 'v' key multiple times (Zoom shortcut)
+          try {
+            for (let i = 0; i < 3; i++) {
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', keyCode: 86, bubbles: true, cancelable: true }));
+              document.dispatchEvent(new KeyboardEvent('keyup', { key: 'v', code: 'KeyV', keyCode: 86, bubbles: true, cancelable: true }));
+            }
+            logs.push(`[Attempt ${attemptNum}] Pressed 'v' key 3 times`);
+          } catch (e) {
+            logs.push(`[Attempt ${attemptNum}] Error pressing key: ${e.message}`);
+          }
+          
+          return { logs, videoDisabled };
+        }, disableAttempt);
+        
+        // Log results
+        if (disableResult && disableResult.logs) {
+          disableResult.logs.forEach(log => console.log(`🎥 [${botName}] ${log}`));
+        }
+        
+        // Wait before next attempt
+        if (disableAttempt < 5) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        // Continue to next attempt
+      }
+    }
+    
+    // Also press 'v' key from Puppeteer side multiple times
     try {
-      await page.evaluate(() => {
-        // Disable video track
-        if (window.localStream || window.fakeVideoStream) {
-          const stream = window.localStream || window.fakeVideoStream;
-          stream.getVideoTracks().forEach(track => {
-            track.enabled = false;
-            track.muted = true;
-          });
-        }
-        
-        // Click "Stop Video" button
-        const buttons = Array.from(document.querySelectorAll('button'));
-        const stopVideoButton = buttons.find(btn => {
-          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          return ariaLabel.includes('stop video') || ariaLabel.includes('turn off video');
-        });
-        
-        if (stopVideoButton) {
-          stopVideoButton.click();
-        }
-        
-        // Press 'v' key
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', bubbles: true }));
-      });
-      
-      await page.keyboard.press('v');
-      await new Promise(resolve => setTimeout(resolve, 300));
-    } catch (error) {
+      for (let i = 0; i < 5; i++) {
+        await page.keyboard.press('v');
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    } catch (e) {
       // Silent fail
     }
     
