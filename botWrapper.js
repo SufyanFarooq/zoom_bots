@@ -249,6 +249,13 @@ async function joinZoomMeeting() {
     // Override getUserMedia: Provide video stream (so icon appears), then we'll stop it
     // IMPORTANT: This must run BEFORE browser detection to ensure mediaDevices exists
     await page.evaluateOnNewDocument(() => {
+      // CRITICAL: Create navigator.mediaDevices if it doesn't exist (headless mode issue)
+      // This MUST be done FIRST before any other mediaDevices access
+      if (!navigator.mediaDevices) {
+        console.log(`[Browser] navigator.mediaDevices is undefined - creating it`);
+        navigator.mediaDevices = {};
+      }
+      
       // Create a fake video stream - we'll provide it initially so Zoom shows the icon
       function createFakeVideoStream() {
         const canvas = document.createElement('canvas');
@@ -272,15 +279,9 @@ async function joinZoomMeeting() {
         return stream;
       }
       
-      // CRITICAL: Create navigator.mediaDevices if it doesn't exist (headless mode issue)
-      if (!navigator.mediaDevices) {
-        console.log(`[Browser] navigator.mediaDevices is undefined - creating it`);
-        navigator.mediaDevices = {};
-      }
-      
       // Store the original getUserMedia if it exists, otherwise create a placeholder
       let originalGetUserMedia = null;
-      if (navigator.mediaDevices.getUserMedia) {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
       }
       
