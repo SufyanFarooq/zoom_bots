@@ -879,7 +879,7 @@ async function joinZoomMeeting() {
               okButton.click();
               return { handled: true, button: 'ok', label: 'OK' };
             } else {
-              console.log(`[Browser] Skipping OK button click on early attempt (${attempt}) - waiting for permission dialog`);
+              console.log(`[Browser] Skipping OK button click on early attempt (${attemptNum}) - waiting for permission dialog`);
             }
           }
         } else {
