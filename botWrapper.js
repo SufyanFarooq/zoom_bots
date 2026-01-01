@@ -159,13 +159,23 @@ async function joinZoomMeeting() {
         // Capture stream at 30fps
         const stream = canvas.captureStream(30);
         
-        // Ensure video track has proper properties
+        // Ensure video track has proper properties and is ACTIVE
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
           videoTrack.enabled = true;
+          videoTrack.muted = false; // Ensure not muted
+          videoTrack.readyState = 'live'; // Set to live state
+          
           // Set constraints to make it look like a real camera
           Object.defineProperty(videoTrack, 'label', { value: 'Fake Video Device', writable: false });
           Object.defineProperty(videoTrack, 'kind', { value: 'video', writable: false });
+          
+          // Override stop to prevent accidental stopping
+          const originalStop = videoTrack.stop.bind(videoTrack);
+          videoTrack.stop = function() {
+            // Don't actually stop, just log
+            console.log('Video track stop called but ignored');
+          };
         }
         
         return stream;
@@ -178,24 +188,61 @@ async function joinZoomMeeting() {
           constraints.audio = false;
         }
         
-        // If video is requested, always provide it (fake stream)
+        // If video is requested, always provide it (fake stream) - ENABLED
         if (constraints && constraints.video) {
           // Always return fake video stream (works in headless mode)
           const stream = createFakeVideoStream();
           
+          // Ensure video track is ACTIVE and ENABLED (not disabled)
+          const videoTrack = stream.getVideoTracks()[0];
+          if (videoTrack) {
+            videoTrack.enabled = true;
+            videoTrack.muted = false;
+            
+            // Force video to be active state
+            try {
+              Object.defineProperty(videoTrack, 'readyState', {
+                value: 'live',
+                writable: false,
+                configurable: true
+              });
+            } catch (e) {
+              // Some browsers don't allow setting readyState
+            }
+            
+            // Monitor and prevent video from being disabled
+            videoTrack.addEventListener('ended', () => {
+              console.log('Video track ended, recreating...');
+              const newStream = createFakeVideoStream();
+              stream.getVideoTracks().forEach(t => {
+                try { t.stop(); } catch (e) {}
+              });
+              const newTrack = newStream.getVideoTracks()[0];
+              if (newTrack) {
+                newTrack.enabled = true;
+                newTrack.muted = false;
+                stream.addTrack(newTrack);
+              }
+            });
+          }
+          
           // If audio was also requested, add empty audio track (muted)
           if (constraints.audio) {
             // Create silent audio track
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            gainNode.gain.value = 0; // Muted
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            oscillator.start();
-            
-            const audioStream = audioContext.createMediaStreamDestination();
-            stream.addTrack(audioStream.stream.getAudioTracks()[0]);
+            try {
+              const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+              const oscillator = audioContext.createOscillator();
+              const gainNode = audioContext.createGain();
+              gainNode.gain.value = 0; // Muted
+              oscillator.connect(gainNode);
+              gainNode.connect(audioContext.destination);
+              oscillator.start();
+              
+              const audioStream = audioContext.createMediaStreamDestination();
+              stream.addTrack(audioStream.stream.getAudioTracks()[0]);
+            } catch (e) {
+              // Audio context creation failed, that's fine
+            }
           }
           
           return stream;
@@ -567,6 +614,39 @@ async function joinZoomMeeting() {
     console.log(`Waiting for meeting interface to fully load for ${botName}...`);
     await new Promise(resolve => setTimeout(resolve, 10000));
     
+    // Enable video in Zoom UI if it's disabled
+    try {
+      console.log(`Ensuring video is enabled for ${botName}...`);
+      await page.evaluate(() => {
+        // Look for video button and enable it if disabled
+        const videoButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+        const videoButton = videoButtons.find(btn => {
+          const ariaLabel = btn.getAttribute('aria-label') || '';
+          const text = btn.textContent.toLowerCase();
+          return (ariaLabel.toLowerCase().includes('video') || 
+                  ariaLabel.toLowerCase().includes('camera') ||
+                  text.includes('video') ||
+                  text.includes('camera')) &&
+                 !ariaLabel.toLowerCase().includes('stop');
+        });
+        
+        if (videoButton) {
+          // Check if video is currently off
+          const isVideoOff = videoButton.getAttribute('aria-label')?.toLowerCase().includes('start') ||
+                            videoButton.getAttribute('aria-label')?.toLowerCase().includes('turn on') ||
+                            videoButton.classList.toString().toLowerCase().includes('off');
+          
+          if (isVideoOff) {
+            console.log('Video is off, enabling...');
+            videoButton.click();
+          }
+        }
+      });
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    } catch (error) {
+      console.log(`Error enabling video for ${botName}: ${error.message}`);
+    }
+    
     // Handle any additional popups that might appear
     try {
       await page.evaluate(() => {
@@ -650,11 +730,84 @@ async function joinZoomMeeting() {
       // Bot stays in meeting - NO process.exit()
       console.log(`✅ ${botName} successfully joined meeting and will stay for ${keepAliveMinutes} minutes`);
       
+      // Keep connection alive - periodic checks to prevent disconnection
+      const keepAliveInterval = setInterval(async () => {
+        try {
+          // Check if still in meeting
+          const stillConnected = await page.evaluate(() => {
+            // Check for disconnection indicators
+            const disconnected = document.querySelector('[class*="disconnected"], [class*="reconnect"], [class*="connection-error"]');
+            const inMeeting = window.location.href.includes('zoom.us/wc/') || 
+                            window.location.href.includes('zoom.us/j/') || 
+                            window.location.href.includes('app.zoom.us');
+            
+            return !disconnected && inMeeting;
+          });
+          
+          if (!stillConnected) {
+            console.log(`⚠️  ${botName} appears disconnected. Attempting to stay connected...`);
+            // Try to refresh or stay on page
+            try {
+              await page.evaluate(() => {
+                // Keep page active
+                if (document.hidden) {
+                  document.dispatchEvent(new Event('visibilitychange'));
+                }
+              });
+            } catch (e) {
+              // Ignore
+            }
+          }
+          
+          // Keep video stream active and ensure it's enabled in Zoom UI
+          await page.evaluate(() => {
+            // Ensure video track is still enabled
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+              // Video should already be active, but ensure it stays that way
+            }
+            
+            // Check and enable video button in Zoom if it got disabled
+            const videoButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+            const videoButton = videoButtons.find(btn => {
+              const ariaLabel = btn.getAttribute('aria-label') || '';
+              return (ariaLabel.toLowerCase().includes('video') || 
+                      ariaLabel.toLowerCase().includes('camera')) &&
+                     !ariaLabel.toLowerCase().includes('stop');
+            });
+            
+            if (videoButton) {
+              const isVideoOff = videoButton.getAttribute('aria-label')?.toLowerCase().includes('start') ||
+                                videoButton.getAttribute('aria-label')?.toLowerCase().includes('turn on');
+              if (isVideoOff) {
+                videoButton.click();
+              }
+            }
+          });
+          
+        } catch (error) {
+          // Ignore errors in keep-alive checks
+        }
+      }, 30000); // Check every 30 seconds
+      
       // Keep the bot alive in the meeting
       setTimeout(() => {
+        clearInterval(keepAliveInterval);
         console.log(`👋 ${botName} leaving meeting after ${keepAliveMinutes} minutes`);
         process.exit(0);
       }, keepAliveMinutes * 60 * 1000);
+      
+      // Also keep page active to prevent timeout
+      setInterval(async () => {
+        try {
+          // Small interaction to keep page active
+          await page.evaluate(() => {
+            // Dispatch a small event to keep page alive
+            document.dispatchEvent(new Event('mousemove'));
+          });
+        } catch (e) {
+          // Ignore
+        }
+      }, 60000); // Every minute
       
       // Return success to indicate bot joined successfully
       return true;
