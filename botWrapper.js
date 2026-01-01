@@ -550,7 +550,7 @@ async function joinZoomMeeting() {
     // Wait a bit more to ensure we're actually in the meeting
     await new Promise(resolve => setTimeout(resolve, 5000));
     
-    // Handle microphone and camera permission popup
+    // Handle microphone and camera permission popup - SELECT VIDEO OPTION
     console.log(`Checking for microphone/camera permission popup for ${botName}...`);
     try {
       const permissionHandled = await page.evaluate(() => {
@@ -558,7 +558,27 @@ async function joinZoomMeeting() {
         const buttons = Array.from(document.querySelectorAll('button'));
         console.log('Found buttons after join:', buttons.map(b => b.textContent));
         
-        // Look for "Continue without microphone and camera" button
+        // PRIORITY: Look for "Use microphone and camera" or "Join with video" button
+        const useVideoButton = buttons.find(btn => {
+          const text = btn.textContent.toLowerCase();
+          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+          return (text.includes('use microphone and camera') ||
+                  text.includes('join with video') ||
+                  text.includes('turn on video') ||
+                  text.includes('enable video') ||
+                  text.includes('start video') ||
+                  ariaLabel.includes('use microphone and camera') ||
+                  ariaLabel.includes('join with video') ||
+                  ariaLabel.includes('turn on video'));
+        });
+        
+        if (useVideoButton) {
+          console.log('Found use video/camera button - clicking to enable video');
+          useVideoButton.click();
+          return true;
+        }
+        
+        // Look for "Continue without microphone and camera" button (avoid this)
         const continueWithoutButton = buttons.find(btn => 
           btn.textContent.toLowerCase().includes('continue without microphone') ||
           btn.textContent.toLowerCase().includes('continue without camera') ||
@@ -567,22 +587,9 @@ async function joinZoomMeeting() {
         );
         
         if (continueWithoutButton) {
-          console.log('Found continue without microphone/camera button');
-          continueWithoutButton.click();
-          return true;
-        }
-        
-        // Look for "Use microphone and camera" button (if we want to allow)
-        const useMicButton = buttons.find(btn => 
-          btn.textContent.toLowerCase().includes('use microphone and camera') ||
-          btn.textContent.toLowerCase().includes('allow microphone') ||
-          btn.textContent.toLowerCase().includes('allow camera')
-        );
-        
-        if (useMicButton) {
-          console.log('Found use microphone/camera button');
-          useMicButton.click();
-          return true;
+          console.log('Found continue without button - NOT clicking (we want video)');
+          // Don't click this - we want video enabled
+          return false;
         }
         
         // Look for "OK" button for floating reactions popup
@@ -601,7 +608,7 @@ async function joinZoomMeeting() {
       });
       
       if (permissionHandled) {
-        console.log(`Permission popup handled for ${botName}`);
+        console.log(`Permission popup handled for ${botName} - video should be enabled`);
         await new Promise(resolve => setTimeout(resolve, 3000));
       } else {
         console.log(`No permission popup found for ${botName}`);
@@ -614,35 +621,87 @@ async function joinZoomMeeting() {
     console.log(`Waiting for meeting interface to fully load for ${botName}...`);
     await new Promise(resolve => setTimeout(resolve, 10000));
     
-    // Enable video in Zoom UI if it's disabled
+    // Force enable video in Zoom UI - Multiple attempts
     try {
-      console.log(`Ensuring video is enabled for ${botName}...`);
+      console.log(`Force enabling video for ${botName}...`);
+      
+      // Attempt 1: Find and click video button
       await page.evaluate(() => {
-        // Look for video button and enable it if disabled
-        const videoButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
-        const videoButton = videoButtons.find(btn => {
-          const ariaLabel = btn.getAttribute('aria-label') || '';
+        // Look for video button with multiple selectors
+        const allButtons = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="video"], [data-testid*="camera"]'));
+        
+        // Try multiple ways to find video button
+        let videoButton = allButtons.find(btn => {
+          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
           const text = btn.textContent.toLowerCase();
-          return (ariaLabel.toLowerCase().includes('video') || 
-                  ariaLabel.toLowerCase().includes('camera') ||
-                  text.includes('video') ||
-                  text.includes('camera')) &&
-                 !ariaLabel.toLowerCase().includes('stop');
+          const dataTestId = (btn.getAttribute('data-testid') || '').toLowerCase();
+          const className = btn.className.toLowerCase();
+          
+          return (ariaLabel.includes('start video') ||
+                  ariaLabel.includes('turn on video') ||
+                  ariaLabel.includes('enable video') ||
+                  ariaLabel.includes('unmute video') ||
+                  ariaLabel.includes('camera') && ariaLabel.includes('off') ||
+                  text.includes('start video') ||
+                  text.includes('turn on video') ||
+                  dataTestId.includes('video') && !dataTestId.includes('stop') ||
+                  className.includes('video') && className.includes('off'));
         });
         
         if (videoButton) {
-          // Check if video is currently off
-          const isVideoOff = videoButton.getAttribute('aria-label')?.toLowerCase().includes('start') ||
-                            videoButton.getAttribute('aria-label')?.toLowerCase().includes('turn on') ||
-                            videoButton.classList.toString().toLowerCase().includes('off');
-          
-          if (isVideoOff) {
-            console.log('Video is off, enabling...');
-            videoButton.click();
+          console.log('Found video button, clicking to enable...');
+          videoButton.click();
+          return true;
+        }
+        
+        // Try finding by SVG icon or image
+        const videoIcons = Array.from(document.querySelectorAll('svg, img, [class*="video-icon"], [class*="camera-icon"]'));
+        for (const icon of videoIcons) {
+          const parent = icon.closest('button, [role="button"]');
+          if (parent) {
+            const ariaLabel = (parent.getAttribute('aria-label') || '').toLowerCase();
+            if (ariaLabel.includes('video') || ariaLabel.includes('camera')) {
+              console.log('Found video button via icon, clicking...');
+              parent.click();
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Attempt 2: Try keyboard shortcut or direct video enable
+      await page.evaluate(() => {
+        // Try pressing 'v' key (Zoom shortcut for video toggle)
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV' }));
+        document.dispatchEvent(new KeyboardEvent('keyup', { key: 'v', code: 'KeyV' }));
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Attempt 3: Direct video stream activation
+      await page.evaluate(async () => {
+        // Ensure video stream is active
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            const videoTrack = stream.getVideoTracks()[0];
+            if (videoTrack) {
+              videoTrack.enabled = true;
+              videoTrack.muted = false;
+              console.log('Video track enabled and active');
+            }
+          } catch (e) {
+            console.log('Could not get video stream:', e.message);
           }
         }
       });
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
     } catch (error) {
       console.log(`Error enabling video for ${botName}: ${error.message}`);
     }
