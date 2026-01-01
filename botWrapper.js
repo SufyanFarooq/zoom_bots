@@ -477,8 +477,30 @@ async function joinZoomMeeting() {
     // Try multiple times with increasing wait times to catch the permission dialog
     console.log(`🎥 [${botName}] Checking for microphone/camera permission popup...`);
     
-    // Wait a bit for permission dialog to appear
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for permission dialog to appear - try multiple selectors
+    let permissionDialogFound = false;
+    try {
+      await page.waitForSelector('.pepc-permission-dialog', { timeout: 5000 });
+      permissionDialogFound = true;
+      console.log(`🎥 [${botName}] Permission dialog appeared!`);
+    } catch (e) {
+      try {
+        await page.waitForSelector('[class*="permission-dialog"]', { timeout: 3000 });
+        permissionDialogFound = true;
+        console.log(`🎥 [${botName}] Permission dialog found with alternative selector!`);
+      } catch (e2) {
+        try {
+          await page.waitForSelector('permission[type="camera"]', { timeout: 3000 });
+          permissionDialogFound = true;
+          console.log(`🎥 [${botName}] Permission element found directly!`);
+        } catch (e3) {
+          console.log(`⚠️ [${botName}] Permission dialog not found immediately, will retry...`);
+        }
+      }
+    }
+    
+    // Additional wait to ensure dialog is fully loaded
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     for (let attempt = 1; attempt <= 5; attempt++) {
       try {
