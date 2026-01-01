@@ -483,23 +483,27 @@ async function joinZoomMeeting() {
     await new Promise(resolve => setTimeout(resolve, 5000));
     
     // Handle microphone and camera permission popup - SELECT "Join with video" so icon appears, then disable it
-    // Try multiple times with increasing wait times to catch the permission dialog
+    // CRITICAL: Wait longer for permission dialog to appear before checking for OK button
     console.log(`🎥 [${botName}] Checking for microphone/camera permission popup...`);
     
-    // Wait for permission dialog to appear - try multiple selectors
+    // Wait longer for permission dialog to appear - it may take time to load
+    // Don't check for OK button until we've given permission dialog enough time
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Wait for permission dialog to appear - try multiple selectors with longer timeout
     let permissionDialogFound = false;
     try {
-      await page.waitForSelector('.pepc-permission-dialog', { timeout: 5000 });
+      await page.waitForSelector('.pepc-permission-dialog', { timeout: 8000 });
       permissionDialogFound = true;
       console.log(`🎥 [${botName}] Permission dialog appeared!`);
     } catch (e) {
       try {
-        await page.waitForSelector('[class*="permission-dialog"]', { timeout: 3000 });
+        await page.waitForSelector('[class*="permission-dialog"]', { timeout: 5000 });
         permissionDialogFound = true;
         console.log(`🎥 [${botName}] Permission dialog found with alternative selector!`);
       } catch (e2) {
         try {
-          await page.waitForSelector('permission[type="camera"]', { timeout: 3000 });
+          await page.waitForSelector('permission[type="camera"]', { timeout: 5000 });
           permissionDialogFound = true;
           console.log(`🎥 [${botName}] Permission element found directly!`);
         } catch (e3) {
@@ -509,7 +513,7 @@ async function joinZoomMeeting() {
     }
     
     // Additional wait to ensure dialog is fully loaded
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
     for (let attempt = 1; attempt <= 5; attempt++) {
       try {
@@ -699,24 +703,63 @@ async function joinZoomMeeting() {
         
         // Look for "OK" button for floating reactions popup (ONLY if no permission dialog found)
         // CRITICAL: Never click OK if permission dialog exists - we need camera button first
+        // Use more specific selectors to avoid false positives
         const permissionDialogCheck = document.querySelector('.pepc-permission-dialog') ||
-                                     document.querySelector('[class*="permission-dialog"]') ||
-                                     document.querySelector('[class*="permission"]');
-        if (!permissionDialogCheck) {
+                                     document.querySelector('[class*="permission-dialog"]');
+        
+        // Also check if there's a permission element anywhere (more specific check)
+        const hasPermissionElement = document.querySelector('permission[type="camera"]') ||
+                                     document.querySelector('permission[type="microphone"]');
+        
+        // Only click OK if:
+        // 1. No permission dialog found
+        // 2. No permission elements found
+        // 3. We've waited long enough (this check happens in later attempts)
+        if (!permissionDialogCheck && !hasPermissionElement) {
+          // Additional check: make sure OK button is not inside a permission-related container
           const okButton = allButtons.find(btn => {
             const text = btn.textContent.toLowerCase().trim();
             const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
-            // Only click OK if it's a simple popup (not permission dialog)
-            return isVisible && text === 'ok' && text.length <= 3;
+            
+            // Check if button is inside permission dialog (should not click)
+            let parent = btn.parentElement;
+            let isInPermissionDialog = false;
+            while (parent) {
+              if (parent.classList && (
+                  parent.classList.contains('pepc-permission-dialog') ||
+                  parent.className.includes('permission-dialog') ||
+                  parent.tagName === 'PERMISSION'
+              )) {
+                isInPermissionDialog = true;
+                break;
+              }
+              parent = parent.parentElement;
+            }
+            
+            // Only click OK if it's a simple popup (not permission dialog) and not in permission container
+            return isVisible && 
+                   text === 'ok' && 
+                   text.length <= 3 &&
+                   !isInPermissionDialog;
           });
           
           if (okButton) {
-            console.log(`[Browser] Found OK button for popup (no permission dialog found)`);
-            okButton.click();
-            return { handled: true, button: 'ok', label: 'OK' };
+            console.log(`[Browser] Found OK button for popup (no permission dialog found, attempt ${attempt})`);
+            // Only click OK on later attempts (after we've given permission dialog time to appear)
+            if (attempt >= 3) {
+              okButton.click();
+              return { handled: true, button: 'ok', label: 'OK' };
+            } else {
+              console.log(`[Browser] Skipping OK button click on early attempt (${attempt}) - waiting for permission dialog`);
+            }
           }
         } else {
-          console.log(`[Browser] Permission dialog still exists - NOT clicking OK button (need camera button first)`);
+          if (permissionDialogCheck) {
+            console.log(`[Browser] Permission dialog exists - NOT clicking OK button (need camera button first)`);
+          }
+          if (hasPermissionElement) {
+            console.log(`[Browser] Permission element found - NOT clicking OK button (need camera button first)`);
+          }
         }
         
         return { handled: false, button: null, label: null };
