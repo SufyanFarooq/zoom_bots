@@ -137,9 +137,9 @@ async function joinZoomMeeting() {
     await context.overridePermissions('https://zoom.us', ['camera']);
     await context.overridePermissions('https://app.zoom.us', ['camera']);
     
-    // Override getUserMedia: Provide video but then disable it, deny audio
+    // Override getUserMedia: Provide video stream (so icon appears), then we'll stop it
     await page.evaluateOnNewDocument(() => {
-      // Create a fake video stream that we'll provide but then disable
+      // Create a fake video stream - we'll provide it initially so Zoom shows the icon
       function createFakeVideoStream() {
         const canvas = document.createElement('canvas');
         canvas.width = 640;
@@ -153,13 +153,8 @@ async function joinZoomMeeting() {
         // Capture stream at 30fps
         const stream = canvas.captureStream(30);
         
-        // Get video track and DISABLE it immediately
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
-          // Disable the video track so icon shows as crossed/disabled
-          videoTrack.enabled = false;
-          videoTrack.muted = true;
-          
           Object.defineProperty(videoTrack, 'label', { value: 'Fake Video Device', writable: false });
           Object.defineProperty(videoTrack, 'kind', { value: 'video', writable: false });
         }
@@ -167,25 +162,20 @@ async function joinZoomMeeting() {
         return stream;
       }
       
-      // Override getUserMedia: Provide disabled video, deny audio
+      // Store the original getUserMedia
+      const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      
+      // Override getUserMedia: Provide video (so icon appears), deny audio
       navigator.mediaDevices.getUserMedia = async (constraints) => {
         // Always deny audio
         if (constraints && constraints.audio) {
           constraints.audio = false;
         }
         
-        // If video is requested, provide it but DISABLED
+        // If video is requested, provide it (we'll stop it later in the UI)
         if (constraints && constraints.video) {
-          // Return fake video stream that is DISABLED
+          // Return fake video stream - we'll stop it after joining
           const stream = createFakeVideoStream();
-          
-          // Ensure video track is DISABLED
-          const videoTrack = stream.getVideoTracks()[0];
-          if (videoTrack) {
-            videoTrack.enabled = false; // Disabled
-            videoTrack.muted = true; // Muted
-          }
-          
           return stream;
         }
         
@@ -530,70 +520,122 @@ async function joinZoomMeeting() {
     await new Promise(resolve => setTimeout(resolve, 10000));
     
     // Disable video after it's been initialized (so icon appears but is crossed/disabled)
+    // Try multiple times to ensure video is properly disabled
     console.log(`Disabling video for ${botName} so icon shows as crossed/disabled...`);
-    try {
-      await page.evaluate(async () => {
-        // Disable video track if it exists
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    
+    // Wait a bit for meeting UI to fully load
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Try disabling video multiple times with different methods
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`Attempt ${attempt} to disable video for ${botName}...`);
+        
+        await page.evaluate(async () => {
+          // Method 1: Stop all video tracks
           try {
-            // Get current stream and disable video track
             const streams = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            const videoTrack = streams.getVideoTracks()[0];
-            if (videoTrack) {
-              videoTrack.enabled = false;
-              videoTrack.stop();
-              console.log('Video track disabled');
-            }
+            const videoTracks = streams.getVideoTracks();
+            videoTracks.forEach(track => {
+              track.enabled = false;
+              track.stop();
+            });
+            console.log(`Stopped ${videoTracks.length} video track(s)`);
           } catch (e) {
-            // Stream might not be available yet, that's okay
+            // Stream might not be available, try getting active tracks
+            try {
+              const mediaStreams = await navigator.mediaDevices.enumerateDevices();
+              // Try to stop any active video tracks
+            } catch (e2) {
+              // Ignore
+            }
           }
-        }
-        
-        // Find and click "Stop Video" or "Turn off video" button in Zoom UI
-        const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
-        const stopVideoButton = allButtons.find(btn => {
-          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          const text = btn.textContent.toLowerCase();
-          return (ariaLabel.includes('stop video') ||
-                  ariaLabel.includes('turn off video') ||
-                  ariaLabel.includes('disable video') ||
-                  text.includes('stop video') ||
-                  text.includes('turn off video'));
-        });
-        
-        if (stopVideoButton) {
-          console.log('Found stop video button, clicking to disable video...');
-          stopVideoButton.click();
-        } else {
-          // Try finding video button and clicking it to toggle off
-          const videoButton = allButtons.find(btn => {
+          
+          // Method 2: Find and click "Stop Video" button multiple times
+          const allButtons = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="video"], [data-testid*="camera"]'));
+          
+          // Try multiple selectors for video button
+          const videoButtonSelectors = [
+            btn => {
+              const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+              return (ariaLabel.includes('stop video') ||
+                      ariaLabel.includes('turn off video') ||
+                      ariaLabel.includes('disable video'));
+            },
+            btn => {
+              const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+              const text = btn.textContent.toLowerCase();
+              return (ariaLabel.includes('video') || ariaLabel.includes('camera')) &&
+                     (ariaLabel.includes('stop') || ariaLabel.includes('turn off') || text.includes('stop video'));
+            },
+            btn => {
+              const dataTestId = (btn.getAttribute('data-testid') || '').toLowerCase();
+              return dataTestId.includes('video') && (dataTestId.includes('stop') || dataTestId.includes('off'));
+            }
+          ];
+          
+          for (const selector of videoButtonSelectors) {
+            const videoButton = allButtons.find(selector);
+            if (videoButton) {
+              console.log('Found video button, clicking to disable...');
+              videoButton.click();
+              await new Promise(resolve => setTimeout(resolve, 500));
+              // Click again to ensure it's off
+              videoButton.click();
+              break;
+            }
+          }
+          
+          // Method 3: Try to find video button by checking if video is on
+          const anyVideoButton = allButtons.find(btn => {
             const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
             return (ariaLabel.includes('video') || ariaLabel.includes('camera')) &&
-                   !ariaLabel.includes('stop') && !ariaLabel.includes('turn off');
+                   !ariaLabel.includes('start') && !ariaLabel.includes('turn on');
           });
           
-          if (videoButton) {
-            // Check if video is currently on (button says "Stop Video")
-            const isVideoOn = videoButton.getAttribute('aria-label')?.toLowerCase().includes('stop') ||
-                             videoButton.getAttribute('aria-label')?.toLowerCase().includes('turn off');
-            if (isVideoOn) {
-              console.log('Video is on, clicking to turn it off...');
-              videoButton.click();
+          if (anyVideoButton) {
+            const ariaLabel = (anyVideoButton.getAttribute('aria-label') || '').toLowerCase();
+            // If button says "Stop Video" or similar, video is on - click to turn off
+            if (ariaLabel.includes('stop') || ariaLabel.includes('turn off')) {
+              console.log('Video appears to be on, clicking to turn off...');
+              anyVideoButton.click();
+              await new Promise(resolve => setTimeout(resolve, 500));
             }
           }
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Method 4: Press 'v' key multiple times (Zoom shortcut to toggle video)
+        await page.keyboard.press('v');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await page.keyboard.press('v'); // Press again to ensure it's off
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (error) {
+        console.log(`Error in attempt ${attempt} to disable video for ${botName}: ${error.message}`);
+      }
+    }
+    
+    // Final check and disable
+    try {
+      await page.evaluate(() => {
+        // One more time - find video button and ensure it's off
+        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+        const videoBtn = buttons.find(btn => {
+          const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+          return (label.includes('video') || label.includes('camera')) &&
+                 (label.includes('stop') || label.includes('turn off'));
+        });
+        if (videoBtn) {
+          videoBtn.click();
         }
       });
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Also try pressing 'v' key to toggle video off (Zoom shortcut)
-      await page.keyboard.press('v');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      console.log(`✅ Video disabled for ${botName} - icon should show as crossed/disabled`);
-    } catch (error) {
-      console.log(`Error disabling video for ${botName}: ${error.message}`);
+    } catch (e) {
+      // Ignore
     }
+    
+    console.log(`✅ Video disabled for ${botName} - icon should show as crossed/disabled`);
     
     // Handle any additional popups that might appear
     try {
