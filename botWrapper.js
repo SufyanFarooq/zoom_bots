@@ -487,9 +487,35 @@ async function joinZoomMeeting() {
           // PRIORITY 1: Look for <permission type="camera"> element - this is the "Use camera" button
           const useCameraButton = permissionDialog.querySelector('permission[type="camera"]');
           if (useCameraButton) {
-            console.log(`[Browser] Found <permission type="camera"> button - clicking to enable video`);
-            useCameraButton.click();
-            return { handled: true, button: 'use_camera_permission', label: 'Use camera (permission element)' };
+            const isVisible = useCameraButton.offsetWidth > 0 && useCameraButton.offsetHeight > 0;
+            console.log(`[Browser] Found <permission type="camera"> button, visible: ${isVisible}`);
+            if (isVisible) {
+              console.log(`[Browser] Clicking <permission type="camera"> button to enable video`);
+              useCameraButton.click();
+              // Also try dispatching click event
+              useCameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+              return { handled: true, button: 'use_camera_permission', label: 'Use camera (permission element)' };
+            }
+          } else {
+            // Log all permission elements found
+            const allPermissionElements = permissionDialog.querySelectorAll('permission');
+            console.log(`[Browser] Found ${allPermissionElements.length} permission elements in dialog`);
+            allPermissionElements.forEach((perm, idx) => {
+              console.log(`[Browser] Permission element ${idx + 1}: type="${perm.getAttribute('type')}", visible=${perm.offsetWidth > 0 && perm.offsetHeight > 0}`);
+            });
+            
+            // Try clicking any permission element with type="camera"
+            for (const perm of allPermissionElements) {
+              if (perm.getAttribute('type') === 'camera') {
+                const isVisible = perm.offsetWidth > 0 && perm.offsetHeight > 0;
+                if (isVisible) {
+                  console.log(`[Browser] Clicking permission element with type="camera"`);
+                  perm.click();
+                  perm.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                  return { handled: true, button: 'use_camera_permission', label: 'Use camera (permission element)' };
+                }
+              }
+            }
           }
           
           // PRIORITY 2: Look for button with "Use camera" text inside permission dialog
@@ -589,17 +615,29 @@ async function joinZoomMeeting() {
         return { handled: false, button: null, label: null };
       });
       
-      if (permissionResult && permissionResult.handled) {
-        console.log(`🎥 [${botName}] Permission popup handled: ${permissionResult.button} - "${permissionResult.label}"`);
-        if (permissionResult.button === 'continue_without_video') {
-          console.log(`⚠️ [${botName}] WARNING: Selected "Continue without video" - video icon might not appear!`);
+        if (permissionResult && permissionResult.handled) {
+          console.log(`🎥 [${botName}] Permission popup handled (attempt ${attempt}): ${permissionResult.button} - "${permissionResult.label}"`);
+          if (permissionResult.button === 'ok') {
+            console.log(`⚠️ [${botName}] WARNING: Only "OK" button clicked - video might not initialize!`);
+          } else if (permissionResult.button === 'use_camera_permission' || permissionResult.button === 'permission_camera') {
+            console.log(`✅ [${botName}] Successfully clicked permission[type="camera"] - video should initialize!`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            break; // Success, exit loop
+          }
+          if (permissionResult.button === 'continue_without_video') {
+            console.log(`⚠️ [${botName}] WARNING: Selected "Continue without video" - video icon might not appear!`);
+          }
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } else {
+          if (attempt < 3) {
+            console.log(`⚠️ [${botName}] Permission popup not found (attempt ${attempt}/3), retrying...`);
+          } else {
+            console.log(`⚠️ [${botName}] No permission popup found after 3 attempts - video might not initialize`);
+          }
         }
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      } else {
-        console.log(`⚠️ [${botName}] No permission popup found - video might not initialize`);
+      } catch (error) {
+        console.log(`❌ [${botName}] Error handling permission popup (attempt ${attempt}): ${error.message}`);
       }
-    } catch (error) {
-      console.log(`❌ [${botName}] Error handling permission popup: ${error.message}`);
     }
     
     // Wait for meeting to load (reduced wait time to disable video faster)
