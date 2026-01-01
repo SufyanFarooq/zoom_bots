@@ -544,14 +544,180 @@ async function joinZoomMeeting() {
     
     // Disable video IMMEDIATELY after joining (so icon appears but is crossed/disabled)
     // This is critical: video must be initialized (so icon appears) but then disabled (so it's crossed)
-    console.log(`Disabling video for ${botName} so icon shows as crossed/disabled...`);
+    console.log(`🎥 [${botName}] Starting video disable process...`);
     
     // Try disabling video multiple times with different methods
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 5; attempt++) {
       try {
-        console.log(`Attempt ${attempt} to disable video for ${botName}...`);
+        console.log(`🎥 [${botName}] Attempt ${attempt}/5 to disable video...`);
         
-        await page.evaluate(async () => {
+        const result = await page.evaluate(async () => {
+          const logs = [];
+          logs.push(`[Browser] Starting video disable attempt...`);
+          
+          // Method 1: Stop all video tracks immediately
+          try {
+            logs.push(`[Browser] Method 1: Stopping video tracks...`);
+            const allStreams = [];
+            
+            // Get stream from global storage
+            if (window.localStream) {
+              allStreams.push(window.localStream);
+              logs.push(`[Browser] Found window.localStream`);
+            }
+            if (window.fakeVideoStream) {
+              allStreams.push(window.fakeVideoStream);
+              logs.push(`[Browser] Found window.fakeVideoStream`);
+            }
+            
+            // Try to get current stream
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+              try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                allStreams.push(stream);
+                logs.push(`[Browser] Got new stream from getUserMedia`);
+              } catch (e) {
+                logs.push(`[Browser] Could not get new stream: ${e.message}`);
+              }
+            }
+            
+            let totalTracksStopped = 0;
+            allStreams.forEach(stream => {
+              const videoTracks = stream.getVideoTracks();
+              videoTracks.forEach(track => {
+                logs.push(`[Browser] Stopping track: ${track.label}, enabled: ${track.enabled}, readyState: ${track.readyState}`);
+                track.enabled = false;
+                track.stop();
+                totalTracksStopped++;
+              });
+            });
+            
+            logs.push(`[Browser] Stopped ${totalTracksStopped} video track(s)`);
+          } catch (e) {
+            logs.push(`[Browser] Error stopping video tracks: ${e.message}`);
+          }
+          
+          // Method 2: Find and click "Stop Video" button - try ALL possible selectors
+          logs.push(`[Browser] Method 2: Finding video button in UI...`);
+          const allButtons = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="video"], [data-testid*="camera"], [class*="video"], [class*="camera"]'));
+          logs.push(`[Browser] Found ${allButtons.length} total buttons`);
+          
+          // Log all buttons with video-related text for debugging
+          const videoRelatedButtons = allButtons.filter(btn => {
+            const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+            const text = btn.textContent.toLowerCase();
+            const dataTestId = (btn.getAttribute('data-testid') || '').toLowerCase();
+            const className = btn.className.toLowerCase();
+            return ariaLabel.includes('video') || ariaLabel.includes('camera') ||
+                   text.includes('video') || text.includes('camera') ||
+                   dataTestId.includes('video') || dataTestId.includes('camera') ||
+                   className.includes('video') || className.includes('camera');
+          });
+          
+          logs.push(`[Browser] Found ${videoRelatedButtons.length} video-related buttons`);
+          videoRelatedButtons.forEach((btn, idx) => {
+            logs.push(`[Browser] Video button ${idx + 1}: aria-label="${btn.getAttribute('aria-label')}", text="${btn.textContent.substring(0, 50)}", data-testid="${btn.getAttribute('data-testid')}"`);
+          });
+          
+          // Try multiple selectors for video button
+          const videoButtonSelectors = [
+            // Exact matches for "Stop Video"
+            btn => {
+              const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+              return ariaLabel.includes('stop video') || ariaLabel.includes('turn off video');
+            },
+            // Any video button that says "stop" or "turn off"
+            btn => {
+              const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+              const text = btn.textContent.toLowerCase();
+              return (ariaLabel.includes('video') || ariaLabel.includes('camera')) &&
+                     (ariaLabel.includes('stop') || ariaLabel.includes('turn off') || text.includes('stop'));
+            },
+            // By data-testid
+            btn => {
+              const dataTestId = (btn.getAttribute('data-testid') || '').toLowerCase();
+              return dataTestId.includes('video') && (dataTestId.includes('stop') || dataTestId.includes('off'));
+            },
+            // By class name
+            btn => {
+              const className = btn.className.toLowerCase();
+              return (className.includes('video') || className.includes('camera')) &&
+                     (className.includes('stop') || className.includes('off'));
+            }
+          ];
+          
+          let videoDisabled = false;
+          let clickedButton = null;
+          
+          for (const selector of videoButtonSelectors) {
+            const videoButton = allButtons.find(selector);
+            if (videoButton) {
+              const ariaLabel = videoButton.getAttribute('aria-label') || '';
+              logs.push(`[Browser] Found video button with selector: "${ariaLabel}"`);
+              clickedButton = ariaLabel;
+              videoButton.click();
+              logs.push(`[Browser] Clicked video button`);
+              await new Promise(resolve => setTimeout(resolve, 500));
+              // Click again to ensure it's off
+              videoButton.click();
+              logs.push(`[Browser] Clicked video button again`);
+              videoDisabled = true;
+              break;
+            }
+          }
+          
+          // Method 3: If no "Stop Video" button found, try to find ANY video button and click it
+          if (!videoDisabled) {
+            logs.push(`[Browser] Method 3: Trying to find any video button...`);
+            const anyVideoButton = allButtons.find(btn => {
+              const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+              const text = btn.textContent.toLowerCase();
+              return (ariaLabel.includes('video') || ariaLabel.includes('camera') || text.includes('video')) &&
+                     !ariaLabel.includes('start') && !ariaLabel.includes('turn on') &&
+                     !text.includes('start');
+            });
+            
+            if (anyVideoButton) {
+              const ariaLabel = anyVideoButton.getAttribute('aria-label') || '';
+              logs.push(`[Browser] Found general video button: "${ariaLabel}", clicking to toggle off...`);
+              clickedButton = ariaLabel;
+              anyVideoButton.click();
+              await new Promise(resolve => setTimeout(resolve, 500));
+              anyVideoButton.click(); // Click again
+              logs.push(`[Browser] Clicked general video button twice`);
+              videoDisabled = true;
+            } else {
+              logs.push(`[Browser] No video button found to disable`);
+            }
+          }
+          
+          return { logs, videoDisabled, clickedButton };
+        });
+        
+        // Log browser console messages
+        if (result && result.logs) {
+          result.logs.forEach(log => console.log(`🎥 [${botName}] ${log}`));
+        }
+        
+        if (result && result.videoDisabled) {
+          console.log(`✅ [${botName}] Video disabled successfully via button: "${result.clickedButton}"`);
+        } else {
+          console.log(`⚠️ [${botName}] Video button not found or not clicked`);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Method 4: Press 'v' key multiple times (Zoom shortcut to toggle video)
+        console.log(`🎥 [${botName}] Method 4: Pressing 'v' key to toggle video...`);
+        await page.keyboard.press('v');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await page.keyboard.press('v'); // Press again to ensure it's off
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (error) {
+        console.log(`❌ [${botName}] Error in attempt ${attempt} to disable video: ${error.message}`);
+      }
+    }
           // Method 1: Stop all video tracks immediately
           try {
             // Get all media streams
