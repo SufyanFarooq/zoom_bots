@@ -697,23 +697,26 @@ async function joinZoomMeeting() {
           return { handled: true, button: 'join_with_video', label };
         }
         
-        // Look for "OK" button for floating reactions popup (only if no permission dialog found)
-        // BUT DON'T click OK if we haven't clicked the camera permission yet
+        // Look for "OK" button for floating reactions popup (ONLY if no permission dialog found)
+        // CRITICAL: Never click OK if permission dialog exists - we need camera button first
         const permissionDialogCheck = document.querySelector('.pepc-permission-dialog') ||
                                      document.querySelector('[class*="permission-dialog"]') ||
                                      document.querySelector('[class*="permission"]');
         if (!permissionDialogCheck) {
           const okButton = allButtons.find(btn => {
-            const text = btn.textContent.toLowerCase();
+            const text = btn.textContent.toLowerCase().trim();
             const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
-            return isVisible && text.includes('ok') && text.length <= 3;
+            // Only click OK if it's a simple popup (not permission dialog)
+            return isVisible && text === 'ok' && text.length <= 3;
           });
           
           if (okButton) {
-            console.log(`[Browser] Found OK button for popup`);
+            console.log(`[Browser] Found OK button for popup (no permission dialog found)`);
             okButton.click();
             return { handled: true, button: 'ok', label: 'OK' };
           }
+        } else {
+          console.log(`[Browser] Permission dialog still exists - NOT clicking OK button (need camera button first)`);
         }
         
         return { handled: false, button: null, label: null };
@@ -738,8 +741,14 @@ async function joinZoomMeeting() {
           }
           await new Promise(resolve => setTimeout(resolve, 2000));
         } else {
-          if (attempt < 5) {
+          // Check if dialog was found but button wasn't clicked
+          if (permissionResult && permissionResult.dialogFound) {
+            console.log(`⚠️ [${botName}] Permission dialog found but camera button not clicked (attempt ${attempt}/5), retrying...`);
+            // Wait longer before retry
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          } else if (attempt < 5) {
             console.log(`⚠️ [${botName}] Permission popup not found (attempt ${attempt}/5), retrying...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
           } else {
             console.log(`⚠️ [${botName}] No permission popup found after 5 attempts - video might not initialize`);
           }
