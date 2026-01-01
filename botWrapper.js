@@ -916,7 +916,18 @@ async function joinZoomMeeting() {
                      permissionResult.button === 'join_with_video' || permissionResult.button === 'use_camera_text') {
             // Video initialized - IMMEDIATELY disable it
             await new Promise(resolve => setTimeout(resolve, 500));
-            await disableVideoImmediately(botName, page);
+            // Inline video disable
+            await page.evaluate(() => {
+              try {
+                if (window.localStream) window.localStream.getVideoTracks().forEach(t => { t.enabled = false; t.muted = true; t.stop(); });
+                if (window.fakeVideoStream) window.fakeVideoStream.getVideoTracks().forEach(t => { t.enabled = false; t.muted = true; t.stop(); });
+                const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+                const stopBtn = buttons.find(b => (b.getAttribute('aria-label') || '').toLowerCase().includes('stop video'));
+                if (stopBtn) stopBtn.click();
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', bubbles: true }));
+              } catch(e) {}
+            });
+            await page.keyboard.press('v');
             break; // Success, exit loop
           }
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -928,20 +939,25 @@ async function joinZoomMeeting() {
           }
         }
       } catch (error) {
-        console.log(`❌ [${botName}] Error handling permission popup (attempt ${attempt}): ${error.message}`);
+        // Silent fail
       }
     }
     
     // Disable video IMMEDIATELY after joining (so icon appears but is crossed/disabled)
-    // FAST & SMART: Single attempt with all methods combined
-    // Wait minimal time for meeting interface
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 500));
     
-    // Disable video immediately
-    await disableVideoImmediately(botName, page);
-    
-    // Helper function to disable video immediately (called from multiple places)
-    async function disableVideoImmediately(botName, page) {
+    // Inline video disable (fast)
+    await page.evaluate(() => {
+      try {
+        if (window.localStream) window.localStream.getVideoTracks().forEach(t => { t.enabled = false; t.muted = true; t.stop(); });
+        if (window.fakeVideoStream) window.fakeVideoStream.getVideoTracks().forEach(t => { t.enabled = false; t.muted = true; t.stop(); });
+        const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+        const stopBtn = buttons.find(b => (b.getAttribute('aria-label') || '').toLowerCase().includes('stop video'));
+        if (stopBtn) stopBtn.click();
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', bubbles: true }));
+      } catch(e) {}
+    });
+    await page.keyboard.press('v');
     try {
       const result = await page.evaluate(async () => {
         const logs = [];
