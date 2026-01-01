@@ -131,28 +131,77 @@ async function joinZoomMeeting() {
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
 
-    // Set permissions: Deny both video and audio (both muted/disabled)
+    // Set permissions: Allow camera (so video icon appears), deny microphone
     const context = browser.defaultBrowserContext();
-    // Deny both camera and microphone - both will show as disabled/crossed
-    await context.overridePermissions('https://zoom.us', []);
-    await context.overridePermissions('https://app.zoom.us', []);
+    // Allow camera so Zoom shows video icon, deny microphone
+    await context.overridePermissions('https://zoom.us', ['camera']);
+    await context.overridePermissions('https://app.zoom.us', ['camera']);
     
-    // Override getUserMedia: Deny both video and audio (both will show as disabled/crossed)
+    // Override getUserMedia: Provide video but then disable it, deny audio
     await page.evaluateOnNewDocument(() => {
-      // Override getUserMedia to deny both video and audio
+      // Create a fake video stream that we'll provide but then disable
+      function createFakeVideoStream() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw a simple pattern (black background)
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Capture stream at 30fps
+        const stream = canvas.captureStream(30);
+        
+        // Get video track and DISABLE it immediately
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          // Disable the video track so icon shows as crossed/disabled
+          videoTrack.enabled = false;
+          videoTrack.muted = true;
+          
+          Object.defineProperty(videoTrack, 'label', { value: 'Fake Video Device', writable: false });
+          Object.defineProperty(videoTrack, 'kind', { value: 'video', writable: false });
+        }
+        
+        return stream;
+      }
+      
+      // Override getUserMedia: Provide disabled video, deny audio
       navigator.mediaDevices.getUserMedia = async (constraints) => {
-        // Always deny both video and audio - both icons will show as disabled/crossed
-        throw new Error('Permission denied - video and audio disabled');
+        // Always deny audio
+        if (constraints && constraints.audio) {
+          constraints.audio = false;
+        }
+        
+        // If video is requested, provide it but DISABLED
+        if (constraints && constraints.video) {
+          // Return fake video stream that is DISABLED
+          const stream = createFakeVideoStream();
+          
+          // Ensure video track is DISABLED
+          const videoTrack = stream.getVideoTracks()[0];
+          if (videoTrack) {
+            videoTrack.enabled = false; // Disabled
+            videoTrack.muted = true; // Muted
+          }
+          
+          return stream;
+        }
+        
+        // If only audio requested, deny
+        throw new Error('Audio permission denied');
       };
       
-      // Override permissions API - deny both camera and microphone
+      // Override permissions API - allow camera (so icon appears), deny microphone
       if (navigator.permissions) {
         const originalQuery = navigator.permissions.query.bind(navigator.permissions);
         navigator.permissions.query = async (permissionDesc) => {
-          // Deny both camera and microphone - both will show as disabled
+          // Allow camera (so video icon appears in participant list)
           if (permissionDesc.name === 'camera') {
-            return { state: 'denied' };
+            return { state: 'granted' };
           }
+          // Deny microphone
           if (permissionDesc.name === 'microphone') {
             return { state: 'denied' };
           }
@@ -481,9 +530,71 @@ async function joinZoomMeeting() {
     console.log(`Waiting for meeting interface to fully load for ${botName}...`);
     await new Promise(resolve => setTimeout(resolve, 10000));
     
-    // Ensure video stays DISABLED (crossed/off) - Don't enable it
-    // Video icon should show as disabled/crossed like mic icon
-    console.log(`Video will remain disabled (crossed) for ${botName} - as intended`);
+    // Disable video after it's been initialized (so icon appears but is crossed/disabled)
+    console.log(`Disabling video for ${botName} so icon shows as crossed/disabled...`);
+    try {
+      await page.evaluate(async () => {
+        // Disable video track if it exists
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          try {
+            // Get current stream and disable video track
+            const streams = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            const videoTrack = streams.getVideoTracks()[0];
+            if (videoTrack) {
+              videoTrack.enabled = false;
+              videoTrack.stop();
+              console.log('Video track disabled');
+            }
+          } catch (e) {
+            // Stream might not be available yet, that's okay
+          }
+        }
+        
+        // Find and click "Stop Video" or "Turn off video" button in Zoom UI
+        const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+        const stopVideoButton = allButtons.find(btn => {
+          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+          const text = btn.textContent.toLowerCase();
+          return (ariaLabel.includes('stop video') ||
+                  ariaLabel.includes('turn off video') ||
+                  ariaLabel.includes('disable video') ||
+                  text.includes('stop video') ||
+                  text.includes('turn off video'));
+        });
+        
+        if (stopVideoButton) {
+          console.log('Found stop video button, clicking to disable video...');
+          stopVideoButton.click();
+        } else {
+          // Try finding video button and clicking it to toggle off
+          const videoButton = allButtons.find(btn => {
+            const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+            return (ariaLabel.includes('video') || ariaLabel.includes('camera')) &&
+                   !ariaLabel.includes('stop') && !ariaLabel.includes('turn off');
+          });
+          
+          if (videoButton) {
+            // Check if video is currently on (button says "Stop Video")
+            const isVideoOn = videoButton.getAttribute('aria-label')?.toLowerCase().includes('stop') ||
+                             videoButton.getAttribute('aria-label')?.toLowerCase().includes('turn off');
+            if (isVideoOn) {
+              console.log('Video is on, clicking to turn it off...');
+              videoButton.click();
+            }
+          }
+        }
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Also try pressing 'v' key to toggle video off (Zoom shortcut)
+      await page.keyboard.press('v');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log(`✅ Video disabled for ${botName} - icon should show as crossed/disabled`);
+    } catch (error) {
+      console.log(`Error disabling video for ${botName}: ${error.message}`);
+    }
     
     // Handle any additional popups that might appear
     try {
