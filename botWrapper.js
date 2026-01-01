@@ -131,157 +131,32 @@ async function joinZoomMeeting() {
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
 
-    // Set permissions: Allow video, deny audio (muted)
+    // Set permissions: Deny both video and audio (both muted/disabled)
     const context = browser.defaultBrowserContext();
-    // Allow camera (video) but not microphone (audio)
-    await context.overridePermissions('https://zoom.us', ['camera']);
-    await context.overridePermissions('https://app.zoom.us', ['camera']);
+    // Deny both camera and microphone - both will show as disabled/crossed
+    await context.overridePermissions('https://zoom.us', []);
+    await context.overridePermissions('https://app.zoom.us', []);
     
-    // Override getUserMedia: Always provide video (fake if needed), deny audio
+    // Override getUserMedia: Deny both video and audio (both will show as disabled/crossed)
     await page.evaluateOnNewDocument(() => {
-      // Create a fake video stream that Zoom will recognize
-      function createFakeVideoStream() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 640;
-        canvas.height = 480;
-        const ctx = canvas.getContext('2d');
-        
-        // Draw a simple pattern (black background)
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Add some text to make it look like a video
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = '20px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Video', canvas.width / 2, canvas.height / 2);
-        
-        // Capture stream at 30fps
-        const stream = canvas.captureStream(30);
-        
-        // Ensure video track has proper properties and is ACTIVE
-        const videoTrack = stream.getVideoTracks()[0];
-        if (videoTrack) {
-          videoTrack.enabled = true;
-          videoTrack.muted = false; // Ensure not muted
-          videoTrack.readyState = 'live'; // Set to live state
-          
-          // Set constraints to make it look like a real camera
-          Object.defineProperty(videoTrack, 'label', { value: 'Fake Video Device', writable: false });
-          Object.defineProperty(videoTrack, 'kind', { value: 'video', writable: false });
-          
-          // Override stop to prevent accidental stopping
-          const originalStop = videoTrack.stop.bind(videoTrack);
-          videoTrack.stop = function() {
-            // Don't actually stop, just log
-            console.log('Video track stop called but ignored');
-          };
-        }
-        
-        return stream;
-      }
-      
-      // Override getUserMedia to always provide video (fake), deny audio
+      // Override getUserMedia to deny both video and audio
       navigator.mediaDevices.getUserMedia = async (constraints) => {
-        // Always deny audio
-        if (constraints && constraints.audio) {
-          constraints.audio = false;
-        }
-        
-        // If video is requested, always provide it (fake stream) - ENABLED
-        if (constraints && constraints.video) {
-          // Always return fake video stream (works in headless mode)
-          const stream = createFakeVideoStream();
-          
-          // Ensure video track is ACTIVE and ENABLED (not disabled)
-          const videoTrack = stream.getVideoTracks()[0];
-          if (videoTrack) {
-            videoTrack.enabled = true;
-            videoTrack.muted = false;
-            
-            // Force video to be active state
-            try {
-              Object.defineProperty(videoTrack, 'readyState', {
-                value: 'live',
-                writable: false,
-                configurable: true
-              });
-            } catch (e) {
-              // Some browsers don't allow setting readyState
-            }
-            
-            // Monitor and prevent video from being disabled
-            videoTrack.addEventListener('ended', () => {
-              console.log('Video track ended, recreating...');
-              const newStream = createFakeVideoStream();
-              stream.getVideoTracks().forEach(t => {
-                try { t.stop(); } catch (e) {}
-              });
-              const newTrack = newStream.getVideoTracks()[0];
-              if (newTrack) {
-                newTrack.enabled = true;
-                newTrack.muted = false;
-                stream.addTrack(newTrack);
-              }
-            });
-          }
-          
-          // If audio was also requested, add empty audio track (muted)
-          if (constraints.audio) {
-            // Create silent audio track
-            try {
-              const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-              const oscillator = audioContext.createOscillator();
-              const gainNode = audioContext.createGain();
-              gainNode.gain.value = 0; // Muted
-              oscillator.connect(gainNode);
-              gainNode.connect(audioContext.destination);
-              oscillator.start();
-              
-              const audioStream = audioContext.createMediaStreamDestination();
-              stream.addTrack(audioStream.stream.getAudioTracks()[0]);
-            } catch (e) {
-              // Audio context creation failed, that's fine
-            }
-          }
-          
-          return stream;
-        }
-        
-        // If only audio requested, deny
-        throw new Error('Audio permission denied');
+        // Always deny both video and audio - both icons will show as disabled/crossed
+        throw new Error('Permission denied - video and audio disabled');
       };
       
-      // Override permissions API - always allow camera, deny microphone
+      // Override permissions API - deny both camera and microphone
       if (navigator.permissions) {
         const originalQuery = navigator.permissions.query.bind(navigator.permissions);
         navigator.permissions.query = async (permissionDesc) => {
+          // Deny both camera and microphone - both will show as disabled
           if (permissionDesc.name === 'camera') {
-            return { state: 'granted' };
+            return { state: 'denied' };
           }
           if (permissionDesc.name === 'microphone') {
             return { state: 'denied' };
           }
           return originalQuery(permissionDesc);
-        };
-      }
-      
-      // Also override mediaDevices.enumerateDevices to show video device
-      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-        const originalEnumerate = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
-        navigator.mediaDevices.enumerateDevices = async () => {
-          const devices = await originalEnumerate();
-          // Ensure video device is listed
-          const hasVideo = devices.some(d => d.kind === 'videoinput');
-          if (!hasVideo) {
-            devices.push({
-              deviceId: 'fake-video-device',
-              kind: 'videoinput',
-              label: 'Fake Video Device',
-              groupId: 'fake-group'
-            });
-          }
-          return devices;
         };
       }
     });
@@ -550,7 +425,7 @@ async function joinZoomMeeting() {
     // Wait a bit more to ensure we're actually in the meeting
     await new Promise(resolve => setTimeout(resolve, 5000));
     
-    // Handle microphone and camera permission popup - SELECT VIDEO OPTION
+    // Handle microphone and camera permission popup - SELECT "Continue without video/audio"
     console.log(`Checking for microphone/camera permission popup for ${botName}...`);
     try {
       const permissionHandled = await page.evaluate(() => {
@@ -558,38 +433,23 @@ async function joinZoomMeeting() {
         const buttons = Array.from(document.querySelectorAll('button'));
         console.log('Found buttons after join:', buttons.map(b => b.textContent));
         
-        // PRIORITY: Look for "Use microphone and camera" or "Join with video" button
-        const useVideoButton = buttons.find(btn => {
+        // PRIORITY: Look for "Continue without microphone and camera" button
+        // This will make both video and mic icons show as disabled/crossed
+        const continueWithoutButton = buttons.find(btn => {
           const text = btn.textContent.toLowerCase();
           const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          return (text.includes('use microphone and camera') ||
-                  text.includes('join with video') ||
-                  text.includes('turn on video') ||
-                  text.includes('enable video') ||
-                  text.includes('start video') ||
-                  ariaLabel.includes('use microphone and camera') ||
-                  ariaLabel.includes('join with video') ||
-                  ariaLabel.includes('turn on video'));
+          return (text.includes('continue without microphone') ||
+                  text.includes('continue without camera') ||
+                  text.includes('join without audio') ||
+                  text.includes('join without video') ||
+                  text.includes('continue without') ||
+                  ariaLabel.includes('continue without'));
         });
         
-        if (useVideoButton) {
-          console.log('Found use video/camera button - clicking to enable video');
-          useVideoButton.click();
-          return true;
-        }
-        
-        // Look for "Continue without microphone and camera" button (avoid this)
-        const continueWithoutButton = buttons.find(btn => 
-          btn.textContent.toLowerCase().includes('continue without microphone') ||
-          btn.textContent.toLowerCase().includes('continue without camera') ||
-          btn.textContent.toLowerCase().includes('join without audio') ||
-          btn.textContent.toLowerCase().includes('join without video')
-        );
-        
         if (continueWithoutButton) {
-          console.log('Found continue without button - NOT clicking (we want video)');
-          // Don't click this - we want video enabled
-          return false;
+          console.log('Found continue without button - clicking to keep video/mic disabled');
+          continueWithoutButton.click();
+          return true;
         }
         
         // Look for "OK" button for floating reactions popup
@@ -608,7 +468,7 @@ async function joinZoomMeeting() {
       });
       
       if (permissionHandled) {
-        console.log(`Permission popup handled for ${botName} - video should be enabled`);
+        console.log(`Permission popup handled for ${botName} - video and mic will be disabled`);
         await new Promise(resolve => setTimeout(resolve, 3000));
       } else {
         console.log(`No permission popup found for ${botName}`);
@@ -621,90 +481,9 @@ async function joinZoomMeeting() {
     console.log(`Waiting for meeting interface to fully load for ${botName}...`);
     await new Promise(resolve => setTimeout(resolve, 10000));
     
-    // Force enable video in Zoom UI - Multiple attempts
-    try {
-      console.log(`Force enabling video for ${botName}...`);
-      
-      // Attempt 1: Find and click video button
-      await page.evaluate(() => {
-        // Look for video button with multiple selectors
-        const allButtons = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="video"], [data-testid*="camera"]'));
-        
-        // Try multiple ways to find video button
-        let videoButton = allButtons.find(btn => {
-          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          const text = btn.textContent.toLowerCase();
-          const dataTestId = (btn.getAttribute('data-testid') || '').toLowerCase();
-          const className = btn.className.toLowerCase();
-          
-          return (ariaLabel.includes('start video') ||
-                  ariaLabel.includes('turn on video') ||
-                  ariaLabel.includes('enable video') ||
-                  ariaLabel.includes('unmute video') ||
-                  ariaLabel.includes('camera') && ariaLabel.includes('off') ||
-                  text.includes('start video') ||
-                  text.includes('turn on video') ||
-                  dataTestId.includes('video') && !dataTestId.includes('stop') ||
-                  className.includes('video') && className.includes('off'));
-        });
-        
-        if (videoButton) {
-          console.log('Found video button, clicking to enable...');
-          videoButton.click();
-          return true;
-        }
-        
-        // Try finding by SVG icon or image
-        const videoIcons = Array.from(document.querySelectorAll('svg, img, [class*="video-icon"], [class*="camera-icon"]'));
-        for (const icon of videoIcons) {
-          const parent = icon.closest('button, [role="button"]');
-          if (parent) {
-            const ariaLabel = (parent.getAttribute('aria-label') || '').toLowerCase();
-            if (ariaLabel.includes('video') || ariaLabel.includes('camera')) {
-              console.log('Found video button via icon, clicking...');
-              parent.click();
-              return true;
-            }
-          }
-        }
-        
-        return false;
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Attempt 2: Try keyboard shortcut or direct video enable
-      await page.evaluate(() => {
-        // Try pressing 'v' key (Zoom shortcut for video toggle)
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV' }));
-        document.dispatchEvent(new KeyboardEvent('keyup', { key: 'v', code: 'KeyV' }));
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Attempt 3: Direct video stream activation
-      await page.evaluate(async () => {
-        // Ensure video stream is active
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            const videoTrack = stream.getVideoTracks()[0];
-            if (videoTrack) {
-              videoTrack.enabled = true;
-              videoTrack.muted = false;
-              console.log('Video track enabled and active');
-            }
-          } catch (e) {
-            console.log('Could not get video stream:', e.message);
-          }
-        }
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-    } catch (error) {
-      console.log(`Error enabling video for ${botName}: ${error.message}`);
-    }
+    // Ensure video stays DISABLED (crossed/off) - Don't enable it
+    // Video icon should show as disabled/crossed like mic icon
+    console.log(`Video will remain disabled (crossed) for ${botName} - as intended`);
     
     // Handle any additional popups that might appear
     try {
@@ -818,29 +597,11 @@ async function joinZoomMeeting() {
             }
           }
           
-          // Keep video stream active and ensure it's enabled in Zoom UI
+          // Keep video DISABLED - don't enable it
+          // Video icon should remain disabled/crossed like mic icon
           await page.evaluate(() => {
-            // Ensure video track is still enabled
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-              // Video should already be active, but ensure it stays that way
-            }
-            
-            // Check and enable video button in Zoom if it got disabled
-            const videoButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
-            const videoButton = videoButtons.find(btn => {
-              const ariaLabel = btn.getAttribute('aria-label') || '';
-              return (ariaLabel.toLowerCase().includes('video') || 
-                      ariaLabel.toLowerCase().includes('camera')) &&
-                     !ariaLabel.toLowerCase().includes('stop');
-            });
-            
-            if (videoButton) {
-              const isVideoOff = videoButton.getAttribute('aria-label')?.toLowerCase().includes('start') ||
-                                videoButton.getAttribute('aria-label')?.toLowerCase().includes('turn on');
-              if (isVideoOff) {
-                videoButton.click();
-              }
-            }
+            // Ensure video stays disabled - don't enable it
+            // Both video and mic should show as disabled/crossed
           });
           
         } catch (error) {
