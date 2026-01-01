@@ -531,39 +531,89 @@ async function joinZoomMeeting() {
           if (permissionDialogElement) {
             console.log(`[Browser] Found permission dialog (selector: ${permissionDialog ? '.pepc-permission-dialog' : 'alternative'})`);
             
-            // PRIORITY 1: Look for <permission type="camera"> element - this is the "Use camera" button
-            const useCameraButton = permissionDialogElement.querySelector('permission[type="camera"]');
-          if (useCameraButton) {
-            const isVisible = useCameraButton.offsetWidth > 0 && useCameraButton.offsetHeight > 0;
-            console.log(`[Browser] Found <permission type="camera"> button, visible: ${isVisible}`);
-            if (isVisible) {
-              console.log(`[Browser] Clicking <permission type="camera"> button to enable video`);
-              useCameraButton.click();
-              // Also try dispatching click event
-              useCameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-              return { handled: true, button: 'use_camera_permission', label: 'Use camera (permission element)' };
-            }
-          } else {
-            // Log all permission elements found
-            const allPermissionElements = permissionDialogElement.querySelectorAll('permission');
-            console.log(`[Browser] Found ${allPermissionElements.length} permission elements in dialog`);
-            allPermissionElements.forEach((perm, idx) => {
-              console.log(`[Browser] Permission element ${idx + 1}: type="${perm.getAttribute('type')}", visible=${perm.offsetWidth > 0 && perm.offsetHeight > 0}`);
-            });
+            // DEBUG: Log entire dialog HTML structure
+            console.log(`[Browser] Dialog HTML (first 500 chars): ${permissionDialogElement.innerHTML.substring(0, 500)}`);
             
-            // Try clicking any permission element with type="camera"
-            for (const perm of allPermissionElements) {
-              if (perm.getAttribute('type') === 'camera') {
-                const isVisible = perm.offsetWidth > 0 && perm.offsetHeight > 0;
-                if (isVisible) {
-                  console.log(`[Browser] Clicking permission element with type="camera"`);
-                  perm.click();
-                  perm.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                  return { handled: true, button: 'use_camera_permission', label: 'Use camera (permission element)' };
+            // PRIORITY 1: Look for <permission type="camera"> element - this is the "Use camera" button
+            // Try multiple ways to find it
+            let useCameraButton = permissionDialogElement.querySelector('permission[type="camera"]');
+            
+            // If not found, try querySelectorAll and filter
+            if (!useCameraButton) {
+              const allPermissions = permissionDialogElement.querySelectorAll('permission');
+              console.log(`[Browser] Found ${allPermissions.length} permission elements total`);
+              for (const perm of allPermissions) {
+                const type = perm.getAttribute('type');
+                console.log(`[Browser] Permission element: type="${type}", tagName="${perm.tagName}"`);
+                if (type === 'camera') {
+                  useCameraButton = perm;
+                  console.log(`[Browser] Found camera permission element via querySelectorAll`);
+                  break;
                 }
               }
             }
-          }
+            
+            // Also try finding by shadow DOM or nested structure
+            if (!useCameraButton) {
+              // Try finding in shadow roots
+              const walker = document.createTreeWalker(permissionDialogElement, NodeFilter.SHOW_ELEMENT);
+              let node;
+              while (node = walker.nextNode()) {
+                if (node.tagName && node.tagName.toLowerCase() === 'permission' && node.getAttribute('type') === 'camera') {
+                  useCameraButton = node;
+                  console.log(`[Browser] Found camera permission via tree walker`);
+                  break;
+                }
+              }
+            }
+            
+            if (useCameraButton) {
+              const isVisible = useCameraButton.offsetWidth > 0 && useCameraButton.offsetHeight > 0;
+              const computedStyle = window.getComputedStyle(useCameraButton);
+              const display = computedStyle.display;
+              const visibility = computedStyle.visibility;
+              console.log(`[Browser] Found <permission type="camera"> button, visible: ${isVisible}, display: ${display}, visibility: ${visibility}`);
+              
+              if (isVisible && display !== 'none' && visibility !== 'hidden') {
+                console.log(`[Browser] Clicking <permission type="camera"> button to enable video`);
+                
+                // Try multiple click methods
+                useCameraButton.click();
+                useCameraButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                useCameraButton.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+                useCameraButton.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+                
+                // Also try programmatic click via button if it's a button
+                if (useCameraButton.tagName.toLowerCase() === 'button' || useCameraButton.onclick) {
+                  if (useCameraButton.onclick) {
+                    useCameraButton.onclick();
+                  }
+                }
+                
+                return { handled: true, button: 'use_camera_permission', label: 'Use camera (permission element)' };
+              } else {
+                console.log(`[Browser] Camera permission button found but not visible (display: ${display}, visibility: ${visibility})`);
+              }
+            } else {
+              // Log all permission elements found for debugging
+              const allPermissionElements = permissionDialogElement.querySelectorAll('permission');
+              console.log(`[Browser] Found ${allPermissionElements.length} permission elements in dialog`);
+              allPermissionElements.forEach((perm, idx) => {
+                const type = perm.getAttribute('type');
+                const visible = perm.offsetWidth > 0 && perm.offsetHeight > 0;
+                console.log(`[Browser] Permission element ${idx + 1}: type="${type}", visible=${visible}, tagName="${perm.tagName}"`);
+              });
+              
+              // Also log all buttons in dialog
+              const allButtons = permissionDialogElement.querySelectorAll('button, [role="button"]');
+              console.log(`[Browser] Found ${allButtons.length} buttons in dialog`);
+              allButtons.forEach((btn, idx) => {
+                const text = btn.textContent.trim();
+                const ariaLabel = btn.getAttribute('aria-label') || '';
+                const visible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
+                console.log(`[Browser] Button ${idx + 1}: text="${text.substring(0, 50)}", aria-label="${ariaLabel}", visible=${visible}`);
+              });
+            }
           
           // PRIORITY 2: Look for button with "Use camera" text inside permission dialog
           const buttons = Array.from(permissionDialogElement.querySelectorAll('button, [role="button"], permission'));
