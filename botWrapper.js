@@ -652,7 +652,7 @@ async function joinZoomMeeting() {
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
         
-        const permissionResult = await page.evaluate(() => {
+        const permissionResult = await page.evaluate((attemptNum) => {
           // Look for the permission dialog - it has a specific structure
           // <permission type="camera"> element is the "Use camera" button
           const permissionDialog = document.querySelector('.pepc-permission-dialog');
