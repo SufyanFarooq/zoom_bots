@@ -468,31 +468,43 @@ async function joinZoomMeeting() {
     await new Promise(resolve => setTimeout(resolve, 5000));
     
     // Handle microphone and camera permission popup - SELECT "Join with video" so icon appears, then disable it
-    console.log(`Checking for microphone/camera permission popup for ${botName}...`);
+    console.log(`🎥 [${botName}] Checking for microphone/camera permission popup...`);
     try {
-      const permissionHandled = await page.evaluate(() => {
+      const permissionResult = await page.evaluate(() => {
         // Look for the permission popup
         const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
-        console.log('Found buttons after join:', buttons.map(b => b.textContent || b.getAttribute('aria-label') || 'no-label'));
+        const buttonInfo = buttons.map(b => ({
+          text: b.textContent,
+          ariaLabel: b.getAttribute('aria-label'),
+          visible: b.offsetWidth > 0 && b.offsetHeight > 0
+        }));
+        
+        console.log(`[Browser] Found ${buttons.length} buttons after join:`, buttonInfo.filter(b => b.visible).slice(0, 10));
         
         // PRIORITY: Look for "Join with video" or "Use microphone and camera" button
         // We MUST select this so video icon appears in participant list, then we'll disable video immediately
         const joinWithVideoButton = buttons.find(btn => {
           const text = btn.textContent.toLowerCase();
           const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          return (text.includes('use microphone and camera') ||
-                  text.includes('join with video') ||
-                  text.includes('turn on video') ||
-                  text.includes('enable video') ||
-                  ariaLabel.includes('use microphone and camera') ||
-                  ariaLabel.includes('join with video') ||
-                  ariaLabel.includes('turn on video'));
+          const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
+          return isVisible && (
+            text.includes('use microphone and camera') ||
+            text.includes('join with video') ||
+            text.includes('turn on video') ||
+            text.includes('enable video') ||
+            text.includes('start video') ||
+            ariaLabel.includes('use microphone and camera') ||
+            ariaLabel.includes('join with video') ||
+            ariaLabel.includes('turn on video') ||
+            ariaLabel.includes('enable video')
+          );
         });
         
         if (joinWithVideoButton) {
-          console.log('Found join with video button - clicking to initialize video (icon will appear, then we disable it)');
+          const label = joinWithVideoButton.getAttribute('aria-label') || joinWithVideoButton.textContent;
+          console.log(`[Browser] Found join with video button: "${label}" - clicking to initialize video`);
           joinWithVideoButton.click();
-          return true;
+          return { handled: true, button: 'join_with_video', label };
         }
         
         // Fallback: Look for "Continue without video" - but this might hide the icon
@@ -500,42 +512,50 @@ async function joinZoomMeeting() {
         const continueWithoutVideoButton = buttons.find(btn => {
           const text = btn.textContent.toLowerCase();
           const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-          return (text.includes('continue without video') ||
-                  text.includes('join without video') ||
-                  text.includes('continue without') ||
-                  ariaLabel.includes('continue without video') ||
-                  ariaLabel.includes('join without video'));
+          const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
+          return isVisible && (
+            text.includes('continue without video') ||
+            text.includes('join without video') ||
+            text.includes('continue without') ||
+            ariaLabel.includes('continue without video') ||
+            ariaLabel.includes('join without video')
+          );
         });
         
         if (continueWithoutVideoButton) {
-          console.log('Found continue without video button - using as fallback (icon might not appear)');
+          const label = continueWithoutVideoButton.getAttribute('aria-label') || continueWithoutVideoButton.textContent;
+          console.log(`[Browser] Found continue without video button: "${label}" - WARNING: icon might not appear`);
           continueWithoutVideoButton.click();
-          return true;
+          return { handled: true, button: 'continue_without_video', label };
         }
         
         // Look for "OK" button for floating reactions popup
-        const okButton = buttons.find(btn => 
-          btn.textContent.toLowerCase().includes('ok') &&
-          btn.textContent.length <= 3
-        );
+        const okButton = buttons.find(btn => {
+          const text = btn.textContent.toLowerCase();
+          const isVisible = btn.offsetWidth > 0 && btn.offsetHeight > 0;
+          return isVisible && text.includes('ok') && text.length <= 3;
+        });
         
         if (okButton) {
-          console.log('Found OK button for popup');
+          console.log(`[Browser] Found OK button for popup`);
           okButton.click();
-          return true;
+          return { handled: true, button: 'ok', label: 'OK' };
         }
         
-        return false;
+        return { handled: false, button: null, label: null };
       });
       
-      if (permissionHandled) {
-        console.log(`Permission popup handled for ${botName} - video initialized, will disable immediately`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+      if (permissionResult && permissionResult.handled) {
+        console.log(`🎥 [${botName}] Permission popup handled: ${permissionResult.button} - "${permissionResult.label}"`);
+        if (permissionResult.button === 'continue_without_video') {
+          console.log(`⚠️ [${botName}] WARNING: Selected "Continue without video" - video icon might not appear!`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 3000));
       } else {
-        console.log(`No permission popup found for ${botName}`);
+        console.log(`⚠️ [${botName}] No permission popup found - video might not initialize`);
       }
     } catch (error) {
-      console.log(`Error handling permission popup for ${botName}: ${error.message}`);
+      console.log(`❌ [${botName}] Error handling permission popup: ${error.message}`);
     }
     
     // Wait for meeting to load (reduced wait time to disable video faster)
