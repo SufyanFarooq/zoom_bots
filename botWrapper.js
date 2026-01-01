@@ -318,6 +318,25 @@ async function joinZoomMeeting() {
         };
       }
     });
+    
+    // Now check browser capabilities AFTER mediaDevices override
+    console.log(`\n🔍 ========== POST-SETUP BROWSER DETECTION [${botName}] ==========`);
+    try {
+      const capabilitiesAfter = await page.evaluate(() => ({
+        hasMediaDevices: !!navigator.mediaDevices,
+        hasGetUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+        hasPermissions: !!navigator.permissions,
+        hasWebRTC: !!(window.RTCPeerConnection || window.webkitRTCPeerConnection),
+        isHeadless: navigator.webdriver || false,
+        webdriver: navigator.webdriver || false,
+        mediaDevicesType: typeof navigator.mediaDevices,
+        getUserMediaType: typeof (navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+      }));
+      console.log(`🔧 Browser Capabilities (After Setup):`, JSON.stringify(capabilitiesAfter, null, 2));
+    } catch (e) {
+      console.log(`⚠️ Could not get browser capabilities after setup: ${e.message}`);
+    }
+    console.log(`🔍 ========== END POST-SETUP DETECTION ==========\n`);
 
     // Navigate to Zoom join URL
     const zoomJoinUrl = `https://zoom.us/wc/join/${meetingId}`;
